@@ -1319,10 +1319,14 @@ finish:
 
 unsigned xiaozhi_play_startup_sound(void) {
   if (!xiaozhi_stopped()) return 0;
-  extern const uint8_t start[] asm("_binary_startup_magicbox_adpcm_start");
-  extern const uint8_t end[] asm("_binary_startup_magicbox_adpcm_end");
+  // Unique C identifiers are required even for block-scope extern asm labels:
+  // GCC otherwise retains an earlier declaration's assembler name.
+  extern const uint8_t startup_start[] asm("_binary_startup_magicbox_adpcm_start");
+  extern const uint8_t startup_end[] asm("_binary_startup_magicbox_adpcm_end");
+  size_t bytes = (size_t)(startup_end - startup_start);
+  if (bytes != 8960) return 0; // 17,920 samples; never block boot on a wrong asset.
   atomic_bool idle = false;
-  return (unsigned)xz_play_prompt(&config, &idle, &idle, start, (size_t)(end-start));
+  return (unsigned)xz_play_prompt(&config, &idle, &idle, startup_start, bytes);
 }
 
 static size_t play_farewell_prompt(void) {

@@ -74,6 +74,8 @@ def verify_archive(archive_path, build_dir=None, standalone_app=None):
         raise RuntimeError("firmware-manifest.json package_type 错误")
     release.validate_font_license_payload(payload, payload["trae_card.bin"])
     release.validate_library_license_payload(payload)
+    if str(manifest.get("version", "")).startswith("2.1.0-xiaozhi.") and int(manifest["version"].rsplit(".", 1)[1]) >= 11 and "startup_audio" not in manifest:
+        raise RuntimeError("小智 .11 及后续固件缺少开机音乐校验记录")
     for key, notice in (("welcome_audio", "WELCOME-SOURCE.txt"), ("farewell_audio", "FAREWELL-SOURCE.txt"), ("startup_audio", "BOOT-SOURCE.txt")):
         if key not in manifest:
             continue
