@@ -21,3 +21,10 @@ Output: 208x45 wordmark split into two Flash A4 masks (4,815 bytes);
 16 kHz mono IMA ADPCM sound (25,251 bytes / 50,502 samples, 100 ms tail silence).
 Playback preserves original source level and uses calibrated device volume.
 No Nintendo graphics or sound are included; animation is implemented locally.
+
+Animation study for .13: Nintendo Switch trailer intro master
+SWITCH_VIMaster_TVCM_1280x720.mov, 50 frames at 30000/1001 fps,
+publicly mirrored in https://repo.mariocube.com/Marketing/Europe/Trailer%20Assets/Nintendo%20Switch.zip
+Studied the anticipation (~0.334 s), latch (~0.500 s), and shared settle
+(~0.734 s). Only locally implemented motion timing is used. No frame, graphic,
+or sound from this reference is bundled in the firmware or source archive.
