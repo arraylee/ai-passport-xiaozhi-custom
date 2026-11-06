@@ -1317,6 +1317,14 @@ finish:
   return outcome;
 }
 
+unsigned xiaozhi_play_startup_sound(void) {
+  if (!xiaozhi_stopped()) return 0;
+  extern const uint8_t start[] asm("_binary_startup_magicbox_adpcm_start");
+  extern const uint8_t end[] asm("_binary_startup_magicbox_adpcm_end");
+  atomic_bool idle = false;
+  return (unsigned)xz_play_prompt(&config, &idle, &idle, start, (size_t)(end-start));
+}
+
 static size_t play_farewell_prompt(void) {
   extern const uint8_t bye_start[] asm("_binary_farewell_zh_adpcm_start");
   extern const uint8_t bye_end[] asm("_binary_farewell_zh_adpcm_end");

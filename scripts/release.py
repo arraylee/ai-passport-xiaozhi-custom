@@ -531,9 +531,10 @@ def write_release_artifacts(build_dir, archive_path, standalone_app_path,
     payload.update(font_license_payload(payload[segments[2].file]))
     payload.update({name: (ROOT / "assets/licenses" / name).read_bytes() for name in LIBRARY_LICENSE_FILES})
     validate_library_license_payload(payload)
-    for name, notice in (("farewell", "FAREWELL-SOURCE.txt"), ("welcome", "WELCOME-SOURCE.txt")):
+    for name, notice in (("farewell", "FAREWELL-SOURCE.txt"), ("welcome", "WELCOME-SOURCE.txt"), ("startup", "BOOT-SOURCE.txt")):
         suffix, audio_format, rate = ("pcm", "PCM-S16LE", 24000) if name == "welcome" else ("adpcm", "IMA-ADPCM", 16000)
-        prompt_path = ROOT / f"components/platform/xiaozhi/{name}_zh.{suffix}"
+        prompt_file = "startup_magicbox.adpcm" if name == "startup" else f"{name}_zh.{suffix}"
+        prompt_path = ROOT / "components/platform/xiaozhi" / prompt_file
         if not prompt_path.is_file():
             continue
         prompt = prompt_path.read_bytes()

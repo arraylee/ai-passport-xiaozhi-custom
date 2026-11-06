@@ -43,6 +43,8 @@ typedef struct {
   void *user;
   bool (*portal_activity)(void);
 } xz_config_t;
+// Cold-boot only, before the networking worker starts. Streams one DMA block.
+unsigned xiaozhi_play_startup_sound(void);
 void xiaozhi_init(const xz_config_t *config);
 bool xiaozhi_start(bool configure_wifi);
 // Call start/service only from the plays worker, without the LVGL lock.

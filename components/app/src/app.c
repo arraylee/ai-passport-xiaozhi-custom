@@ -1,5 +1,6 @@
 #include "presentation/companion_resources.h"
 #include "presentation/bobo_art.h"
+#include "presentation/ui_boot.h"
 #include "platform/platform_pet_art.h"
 #include "platform/platform_clicker.h"
 // components/app/src/app.c —— 唯一知道"具体实现"的地方
@@ -965,7 +966,7 @@ static struct _lv_display_t *s_wake_display;
 static atomic_bool s_boot_avatar_ready;
 static void restore_boot_avatar(void);
 #endif
-#define BRIGHT_PCT 100                    // 背光恒 100%,不再提供运行时调节
+#define BRIGHT_PCT 100                    // 产测/无配置时的安全亮度
 
 // 全屏退出时刻(ms)。退出用的"长按确定键"会被 LVGL 导航当成对焦点磁贴(ALBUM)的一次
 // 点击释放,从而立刻又请求全屏 → 死循环。用它给全屏重入去抖:退出后极短时间内的
@@ -1282,6 +1283,51 @@ static void play_saved_boot_rtttl(void) {
 #endif
 #endif
 
+static unsigned plays_get_brightness(void *user) {
+    (void)user;
+    return s_profile.brightness >= BRIGHTNESS_MIN && s_profile.brightness <= 100 ?
+           (unsigned)s_profile.brightness : BRIGHTNESS_DEFAULT;
+}
+static bool plays_preview_brightness(void *user, unsigned brightness) {
+    (void)user;
+#if PERIPH_DISPLAY
+    if (brightness < BRIGHTNESS_MIN || brightness > 100 || !s_disp) return false;
+    hal_display_set_backlight(s_disp, (uint8_t)brightness);
+    return true;
+#else
+    (void)brightness;
+    return false;
+#endif
+}
+static bool plays_set_brightness(void *user, unsigned brightness) {
+    if (brightness < BRIGHTNESS_MIN || brightness > 100) return false;
+    int previous = s_profile.brightness;
+    if (!plays_preview_brightness(user, brightness)) return false;
+    if (previous == (int)brightness) return true;
+    s_profile.brightness = (int)brightness;
+    if (!save_profile()) {
+        s_profile.brightness = previous;
+        (void)plays_preview_brightness(user, plays_get_brightness(user));
+        return false;
+    }
+    return true;
+}
+static unsigned plays_get_sleep_minutes(void *user) {
+    (void)user;
+    return (unsigned)s_profile.sleep_min;
+}
+static bool plays_set_sleep_minutes(void *user, unsigned minutes) {
+    (void)user;
+    if (minutes > SLEEP_MIN_MAX) return false;
+    int previous = s_profile.sleep_min;
+    if (previous != (int)minutes) {
+        s_profile.sleep_min = (int)minutes;
+        if (!save_profile()) { s_profile.sleep_min = previous; return false; }
+    }
+    note_activity();
+    return true;
+}
+
 #if PERIPH_AUDIO && PERIPH_BLE
 // 播一段内置提示音。运行在 NimBLE host 任务:只做复制 + 置标志 + 给信号量,
 // **绝不能在这里合成播放** —— audio_service_play 阻塞写 I2S,会卡死 BLE 协议栈。
@@ -1330,15 +1376,42 @@ static void on_jpeg_result(int ok, void *user) {
 // Caller holds LVGL. The existing REFR_READY gate waits for a complete draw;
 // installing a descriptor is not enough to safely illuminate the LCD.
 static void finish_wake_frame(void) {
-    if (s_wake_display && platform_lvgl_arm_first_frame(s_disp, s_wake_display, BRIGHT_PCT))
+    if (s_wake_display && platform_lvgl_arm_first_frame(s_disp, s_wake_display, (uint8_t)plays_get_brightness(NULL)))
         s_wake_display = NULL;
 }
 static void on_boot_voice_opened(void *user) {
     (void)user;
     // Flash-mapped XiaoZhi portraits require no PNG decode. Arm the same
     // complete-frame gate only once the actual startup screen is present.
+    ui_boot_close();
     atomic_store(&s_boot_avatar_ready, true);
     finish_wake_frame();
+}
+static void show_startup_brand(void) {
+    if (!PASSPORT_XIAOZHI_EDITION) return;
+    s_button_guide_active = true;
+    if (!platform_lvgl_lock(500)) { s_button_guide_active = false; return; }
+    bool shown = ui_boot_open();
+    if (shown) finish_wake_frame();
+    platform_lvgl_unlock();
+    uint32_t started = (uint32_t)(esp_timer_get_time()/1000);
+    // Wait for a real drawn overlay before the chime, without holding LVGL.
+    while (shown && (uint32_t)(esp_timer_get_time()/1000)-started < 500u) {
+        bool drawn = false;
+        if (platform_lvgl_lock(50)) { drawn = ui_boot_drawn(); platform_lvgl_unlock(); }
+        if (drawn) break;
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    vTaskDelay(pdMS_TO_TICKS(200));
+#if PERIPH_AUDIO && !AUDIO_MIC_PASSTHROUGH_TEST
+    unsigned samples = xiaozhi_play_startup_sound();
+    ESP_LOGI(TAG, "startup_chime samples=%u", samples);
+#endif
+    while (shown && (uint32_t)(esp_timer_get_time()/1000)-started < UI_BOOT_DURATION_MS)
+        vTaskDelay(pdMS_TO_TICKS(10));
+    // The overlay is removed by on_boot_voice_opened after the real page exists.
+    ESP_LOGI(TAG, "startup_brand complete=%d", shown);
+    s_button_guide_active = false;
 }
 static bool start_boot_xiaozhi(void) {
     if (!PASSPORT_XIAOZHI_EDITION) return false;
@@ -1346,7 +1419,7 @@ static bool start_boot_xiaozhi(void) {
     while (!platform_lvgl_lock(500)) vTaskDelay(pdMS_TO_TICKS(50));
     platform_lvgl_nav_enable(false);
     bool opened = app_plays_open_xiaozhi(s_profile.game_best);
-    if (!opened) platform_lvgl_nav_enable(true);
+    if (!opened) { ui_boot_close(); platform_lvgl_nav_enable(true); }
     platform_lvgl_unlock();
     if (opened) {
         while (platform_button_any_pressed(s_button)) vTaskDelay(pdMS_TO_TICKS(20));
@@ -2549,7 +2622,16 @@ static int on_at_command(const char *line, int len, char *out, int n, void *user
 #endif
             return at_reply(out, n, "+OK volume=%d\r\n", v);
         }
+        if ((c = at_after(b, "brightness,"))) {
+            if (at_is(c, "?")) return at_reply(out, n, "+OK brightness=%u\r\n", plays_get_brightness(NULL));
+            int value;
+            if (!at_decimal(c, 100, &value) || value < BRIGHTNESS_MIN)
+                return at_reply(out, n, "+ERR=arg(brightness 10..100)\r\n");
+            bool saved = plays_set_brightness(NULL, (unsigned)value);
+            return at_reply(out, n, saved ? "+OK brightness=%d\r\n" : "+ERR=save\r\n", value);
+        }
         if ((c = at_after(b, "standby_time,"))) {
+            if (at_is(c, "?")) return at_reply(out, n, "+OK standby_time=%u\r\n", plays_get_sleep_minutes(NULL) * 60u);
             int sec;
             if (!at_decimal(c, INT_MAX, &sec)) return at_reply(out, n, "+ERR=arg(standby_time>=0,单位秒,0=永不)\r\n");
             int mn = sec / 60 + (sec % 60 >= 30);                       // 内部分钟,四舍五入(粒度 60s)
@@ -2773,6 +2855,11 @@ void app_run(void) {
 
 #if PERIPH_DISPLAY
     app_plays_config_t plays_config = {.exit = on_plays_exit, .portal_activity = note_portal_activity};
+    plays_config.get_brightness = plays_get_brightness;
+    plays_config.set_brightness = plays_set_brightness;
+    plays_config.preview_brightness = plays_preview_brightness;
+    plays_config.get_sleep_minutes = plays_get_sleep_minutes;
+    plays_config.set_sleep_minutes = plays_set_sleep_minutes;
 #if PERIPH_BLE
     plays_config.identity = s_id;
     plays_config.game_result = on_game_result;
@@ -2845,6 +2932,7 @@ void app_run(void) {
     // Both cold boot and deep wake take this route. xiaozhi_start(false) uses
     // saved Wi-Fi when available and opens provisioning otherwise; it never
     // clears credentials. Factory boot has already returned above.
+    if (!woke_from_deep_sleep) show_startup_brand();
     if (start_boot_xiaozhi()) {
         ESP_LOGI(TAG, "小智版启动：进入 Wi-Fi / 激活 / 对话流程");
         return;

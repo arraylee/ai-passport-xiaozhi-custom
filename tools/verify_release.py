@@ -74,7 +74,7 @@ def verify_archive(archive_path, build_dir=None, standalone_app=None):
         raise RuntimeError("firmware-manifest.json package_type 错误")
     release.validate_font_license_payload(payload, payload["trae_card.bin"])
     release.validate_library_license_payload(payload)
-    for key, notice in (("welcome_audio", "WELCOME-SOURCE.txt"), ("farewell_audio", "FAREWELL-SOURCE.txt")):
+    for key, notice in (("welcome_audio", "WELCOME-SOURCE.txt"), ("farewell_audio", "FAREWELL-SOURCE.txt"), ("startup_audio", "BOOT-SOURCE.txt")):
         if key not in manifest:
             continue
         entry = manifest[key]

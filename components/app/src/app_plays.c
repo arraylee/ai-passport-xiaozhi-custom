@@ -26,6 +26,7 @@ typedef enum { EVENT_KEY, EVENT_SELECT, EVENT_VOICE_CHECK } event_kind_t;
 typedef struct { event_kind_t kind; int value, argument; uint64_t at_ms; uint32_t generation; } play_event_t;
 static const char *TAG = "plays";
 static app_plays_config_t C;
+static void ui_device_preferences(void);
 static QueueHandle_t queue;
 static atomic_int active = PLAY_CLOSED;
 static atomic_bool abort_microphone;
@@ -287,6 +288,7 @@ static void button(const play_event_t *event) {
         } else return;
         if (!platform_lvgl_lock(300)) return;
         unsigned avatar = 0;
+        ui_device_preferences();
         ui_xz_action_t action = ui_xiaozhi_key(key, &avatar);
         if (action == UI_XZ_EXIT) { xiaozhi_stop(); xz_restart = false; xz_leaving = true; resume_setup_after_sleep = false; }
         if (action == UI_XZ_AVATAR) {
@@ -299,6 +301,20 @@ static void button(const play_event_t *event) {
         else if (action == UI_XZ_BEGIN_SETUP) xiaozhi_begin_setup();
         else if (action == UI_XZ_INTERRUPT) xiaozhi_interrupt();
         else if (action == UI_XZ_RESUME) xiaozhi_resume();
+        else if (action == UI_XZ_BRIGHTNESS_PREVIEW || action == UI_XZ_BRIGHTNESS_CANCEL) {
+            unsigned value = action == UI_XZ_BRIGHTNESS_CANCEL && C.get_brightness ? C.get_brightness(C.user) : avatar;
+            if (C.preview_brightness) (void)C.preview_brightness(C.user, value);
+        }
+        else if (action == UI_XZ_BRIGHTNESS || action == UI_XZ_SLEEP) {
+            bool saved = action == UI_XZ_BRIGHTNESS ?
+                C.set_brightness && C.set_brightness(C.user, avatar) :
+                C.set_sleep_minutes && C.set_sleep_minutes(C.user, avatar);
+            if (platform_lvgl_lock(100)) {
+                ui_device_preferences();
+                ui_xiaozhi_setting_result(saved);
+                platform_lvgl_unlock();
+            }
+        }
         else if (action == UI_XZ_INTERRUPT_MODE || action == UI_XZ_VOLUME) {
             bool saved = action == UI_XZ_VOLUME ? xiaozhi_set_volume(avatar) :
                          xiaozhi_set_natural_interrupt(avatar != 0);
@@ -340,6 +356,10 @@ static void button(const play_event_t *event) {
     else if (answer_return) child_exited(NULL);
     platform_lvgl_unlock();
 }
+static void ui_device_preferences(void) {
+    ui_xiaozhi_set_device_settings(C.get_brightness ? C.get_brightness(C.user) : 100,
+                                  C.get_sleep_minutes ? C.get_sleep_minutes(C.user) : 5);
+}
 static void refresh(uint64_t now) {
     int mode = atomic_load(&active);
     if (mode == PLAY_CLOSED || mode == PLAY_MENU || mode == UI_PLAY_DODGE) return;
@@ -357,6 +377,7 @@ static void refresh(uint64_t now) {
             .sent = snapshot.sent, .failed = snapshot.failed, .name = snapshot.name};
         ui_plays_clicker(&view);
     } else if (mode == UI_PLAY_XIAOZHI) {
+        ui_device_preferences();
         xz_view_t view; xiaozhi_snapshot(&view);
         if (xz_leaving) { view.phase = XZ_CLOUD; strcpy(view.detail, "正在返回玩法，请稍候"); view.revision++; }
         ui_xiaozhi_update(&view, companion_avatar(view.avatar));
@@ -374,7 +395,9 @@ static void pause_voice_for_sleep(void) {
             xz_view_t current;
             xiaozhi_snapshot(&current);
             if (current.phase == XZ_SETUP) resume_setup_after_sleep = true;
-            if (current.phase == XZ_WELCOME) { xz_restart = true; xz_setup = false; }
+            if (current.phase == XZ_WELCOME || current.phase == XZ_STANDBY) {
+                xz_restart = true; xz_setup = false;
+            }
         }
         // If a key cancels the sleep handshake, reopen the same setup page.
         if (resume_setup_after_sleep) { xz_restart = true; xz_setup = true; }
@@ -564,7 +587,7 @@ bool app_plays_open_xiaozhi(int best) {
 bool app_plays_voice_busy(void) {
     if (atomic_load(&active) != UI_PLAY_XIAOZHI) return false;
     xz_view_t view; xiaozhi_snapshot(&view);
-    return view.phase == XZ_FAREWELL || view.phase == XZ_WAKING || view.phase == XZ_STANDBY || view.phase == XZ_LISTEN || view.phase == XZ_THINK || view.phase == XZ_SPEAK ||
+    return view.phase == XZ_FAREWELL || view.phase == XZ_WAKING || view.phase == XZ_LISTEN || view.phase == XZ_THINK || view.phase == XZ_SPEAK ||
         view.phase == XZ_BOOT || (view.phase == XZ_WELCOME && view.output_active) ||
         view.phase == XZ_BIND || view.phase == XZ_WIFI || view.phase == XZ_CLOUD;
 }

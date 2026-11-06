@@ -129,6 +129,32 @@ static void check_speaker_sync(unsigned rate) {
            rate,(int)(opened-first_sound_us),(int)(closed-last_sound_us));
     ui_xiaozhi_close();
 }
+static void check_device_settings(void) {
+ unsigned value=0;xz_view_t v={.phase=XZ_STANDBY,.volume=95,.revision=1};
+ ui_xiaozhi_set_device_settings(100,5);ui_xiaozhi_open(&v,&face_art);
+ ui_xiaozhi_key(UI_PLAY_BACK,&value);
+ for(unsigned i=0;i<4;i++)ui_xiaozhi_key(UI_PLAY_DOWN,&value);
+ ui_xiaozhi_key(UI_PLAY_OK,&value);settle();assert(has_text(lv_screen_active(),"屏幕亮度")&&has_text(lv_screen_active(),"100"));
+ assert(ui_xiaozhi_key(UI_PLAY_DOWN,&value)==UI_XZ_BRIGHTNESS_PREVIEW&&value==95);
+ assert(ui_xiaozhi_key(UI_PLAY_BACK,&value)==UI_XZ_BRIGHTNESS_CANCEL);
+ ui_xiaozhi_key(UI_PLAY_OK,&value);settle();assert(has_text(lv_screen_active(),"100"));
+ for(unsigned i=0;i<25;i++)ui_xiaozhi_key(UI_PLAY_DOWN,&value);
+ assert(ui_xiaozhi_key(UI_PLAY_OK,&value)==UI_XZ_BRIGHTNESS&&value==10);
+ ui_xiaozhi_setting_result(false);settle();assert(has_text(lv_screen_active(),"保存失败，请重试"));
+ ui_xiaozhi_set_device_settings(10,5);ui_xiaozhi_setting_result(true);settle();
+ ui_xiaozhi_key(UI_PLAY_DOWN,&value);settle();assert(has_text(lv_screen_active(),"休眠时间"));
+ ui_xiaozhi_key(UI_PLAY_OK,&value);settle();assert(has_text(lv_screen_active(),"5"));
+ ui_xiaozhi_key(UI_PLAY_UP,&value);assert(ui_xiaozhi_key(UI_PLAY_OK,&value)==UI_XZ_SLEEP&&value==10);
+ ui_xiaozhi_setting_result(false);settle();assert(has_text(lv_screen_active(),"保存失败，请重试"));
+ ui_xiaozhi_key(UI_PLAY_BACK,&value);ui_xiaozhi_key(UI_PLAY_OK,&value);settle();assert(has_text(lv_screen_active(),"5"));
+ for(unsigned i=0;i<3;i++)ui_xiaozhi_key(UI_PLAY_DOWN,&value);
+ settle();assert(has_text(lv_screen_active(),"不自动休眠"));
+ assert(ui_xiaozhi_key(UI_PLAY_OK,&value)==UI_XZ_SLEEP&&value==0);
+ ui_xiaozhi_set_device_settings(10,0);ui_xiaozhi_setting_result(true);
+ ui_xiaozhi_key(UI_PLAY_DOWN,&value);settle();assert(has_text(lv_screen_active(),"返回"));
+ ui_xiaozhi_key(UI_PLAY_OK,&value);settle();assert(has_text(lv_screen_active(),"对话"));
+ ui_xiaozhi_close();
+}
 int main(void){
     lv_init();lv_display_t *d=lv_display_create(240,320);lv_display_set_color_format(d,LV_COLOR_FORMAT_RGB565);
     lv_display_set_buffers(d,buffer,NULL,sizeof buffer,LV_DISPLAY_RENDER_MODE_PARTIAL);lv_display_set_flush_cb(d,flush);
@@ -138,6 +164,7 @@ int main(void){
     lv_obj_t *home=lv_screen_active();xz_view_t v={.phase=XZ_READY,.avatar=0,.revision=1};strcpy(v.detail,"你好，今天想聊些什么？");
     check_speaker_sync(16000);check_speaker_sync(24000);
     check_male_mouth();
+    check_device_settings();
     unsigned avatar=0;lv_mem_monitor_t first,last;
     ui_xiaozhi_set_battery(12,1); v.phase=XZ_BOOT;
     ui_xiaozhi_open(&v,&face_art);settle();assert(find_face(lv_screen_active())&&!label(lv_screen_active(),"配置网络"));assert_gauge(12,1);
@@ -176,7 +203,7 @@ int main(void){
     assert_binding_layout();
     assert(ui_xiaozhi_key(UI_PLAY_OK,&avatar)==UI_XZ_RETRY);
     ui_xiaozhi_key(UI_PLAY_DOWN,&avatar);ui_xiaozhi_key(UI_PLAY_OK,&avatar);settle();
-    assert(has_text(lv_screen_active(),"返回")&&!has_text(lv_screen_active(),"返回玩法"));
+    assert(has_text(lv_screen_active(),"屏幕亮度")&&!has_text(lv_screen_active(),"返回玩法"));
     ui_xiaozhi_key(UI_PLAY_BACK,&avatar);settle();
     assert_binding_layout();
     assert(ui_xiaozhi_key(UI_PLAY_BACK,&avatar)==UI_XZ_NONE);
@@ -296,7 +323,7 @@ int main(void){
     v.phase=XZ_LISTEN;v.natural_interrupt=false;v.volume=95;v.revision++;
     ui_xiaozhi_open(&v,&face_art);
     ui_xiaozhi_key(UI_PLAY_UP,&avatar);ui_xiaozhi_key(UI_PLAY_OK,&avatar);settle();
-    const char *menu[]={"重新配网","调整音量","打断方式","智能体设置","返回"};
+    const char *menu[]={"重新配网","调整音量","打断方式","智能体设置","屏幕亮度"};
     for(unsigned i=0;i<5;i++) {
         lv_obj_t *row=label(lv_screen_active(),menu[i]);assert(row);
         lv_obj_t *card=lv_obj_get_parent(row);
@@ -333,7 +360,8 @@ int main(void){
     v.volume=100;ui_xiaozhi_update(&v,&face_art);ui_xiaozhi_setting_result(true);settle();
     ui_xiaozhi_key(UI_PLAY_DOWN,&avatar);ui_xiaozhi_key(UI_PLAY_DOWN,&avatar);ui_xiaozhi_key(UI_PLAY_OK,&avatar);settle();
     assert(has_text(lv_screen_active(),"前往xiaozhi.me，\n进入控制台设置")&&!has_text(lv_screen_active(),"名字、角色和音色"));assert_gauge(87,5);
-    ui_xiaozhi_key(UI_PLAY_BACK,&avatar);ui_xiaozhi_key(UI_PLAY_DOWN,&avatar);
+    ui_xiaozhi_key(UI_PLAY_BACK,&avatar);
+    for(unsigned n=0;n<3;n++)ui_xiaozhi_key(UI_PLAY_DOWN,&avatar);
     assert(ui_xiaozhi_key(UI_PLAY_OK,&avatar)==UI_XZ_NONE); // Return is conversation, not Plays.
     v.phase=XZ_SPEAK;v.revision++;ui_xiaozhi_update(&v,&face_art);settle();
     assert(ui_xiaozhi_key(UI_PLAY_OK,&avatar)==UI_XZ_INTERRUPT);

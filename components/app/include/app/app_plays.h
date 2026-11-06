@@ -12,6 +12,11 @@ typedef struct {
     void (*release_audio)(void *user);
     unsigned (*get_volume)(void *user);
     bool (*set_volume)(void *user, unsigned volume);
+    unsigned (*get_brightness)(void *user);
+    bool (*set_brightness)(void *user, unsigned brightness);
+    bool (*preview_brightness)(void *user, unsigned brightness);
+    unsigned (*get_sleep_minutes)(void *user);
+    bool (*set_sleep_minutes)(void *user, unsigned minutes);
     void (*game_result)(uint32_t total, uint32_t best, uint32_t rounds, void *user);
     // Called under the LVGL lock when returning to the profile.
     void (*exit)(void *user);

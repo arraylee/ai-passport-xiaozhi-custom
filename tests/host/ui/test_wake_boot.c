@@ -44,6 +44,7 @@ static struct { char avatar_name[16]; } s_profile;
 static bool platform_lvgl_lock(int timeout) { (void)timeout; return true; }
 static void platform_lvgl_unlock(void) {}
 static void note_activity(void) {}
+static unsigned plays_get_brightness(void *user) { (void)user; return 40; }
 static void vTaskDelay(int ticks);
 static void on_dock_action(int action, void *user) { (void)action; (void)user; }
 static void *platform_display_panel(hal_display_t *display) { assert(display == s_disp); return display; }
@@ -52,7 +53,7 @@ static int esp_lcd_panel_disp_on_off(void *panel, bool on) {
     assert(panel == s_disp && on && flushes); ++panels; return ESP_OK;
 }
 static int hal_display_set_backlight(hal_display_t *display, uint8_t brightness) {
-    assert(display == s_disp && brightness == 100 && panels == lights + 1);
+    assert(display == s_disp && brightness == (factory_mode ? 100 : 40) && panels == lights + 1);
     ++lights; lit_avatar = flushed_avatar; lit_bear = flushed_bear; return 0;
 }
 static bool jpeg_store_has_valid(int slot) { assert(slot == JPEG_SLOT_AVATAR); return uploaded_exists; }

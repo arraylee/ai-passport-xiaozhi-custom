@@ -29,7 +29,7 @@ for mode in ('normal', 'factory'):
     print(result.stdout[-6000:] + result.stderr[-1000:])
     assert result.returncode == 0, mode + ': rounded retained-screen rendering failed'
     scenes.update(re.findall(r'^([a-z0-9-]+): current=', result.stdout, re.M))
-assert len(scenes) >= 41 and {'selftest-progress', 'selftest-result', 'xiaozhi-settings', 'xiaozhi-interrupt-mode', 'xiaozhi-volume', 'xiaozhi-welcome', 'xiaozhi-agent'} <= scenes, 'missing current-run screens'
+assert len(scenes) >= 41 and {'selftest-progress', 'selftest-result', 'xiaozhi-settings', 'xiaozhi-interrupt-mode', 'xiaozhi-volume', 'xiaozhi-welcome', 'xiaozhi-agent', 'xiaozhi-brightness', 'xiaozhi-sleep-time', 'xiaozhi-settings-scrolled', 'startup-brand-over-voice'} <= scenes, 'missing current-run screens'
 # The empty theme screen uses LVGL's full subtree clip. Compare all exterior
 # and antialiased edge pixels of the XiaoZhi screens against that reference.
 with Image.open(output / 'xiaozhi-rounded-reference.ppm') as reference:

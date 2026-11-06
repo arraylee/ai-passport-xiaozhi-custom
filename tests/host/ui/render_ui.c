@@ -1,4 +1,5 @@
 #include "presentation/ui_xiaozhi.h"
+#include "presentation/ui_boot.h"
 #include "lvgl.h"
 #include "presentation/ui_profile.h"
 #include "presentation/ui_album.h"
@@ -213,10 +214,12 @@ int main(int argc, char **argv) {
     strcpy(voice.detail,"你好，今天想聊些什么？");
     // Actual dedicated-boot screen hierarchy: hidden profile, suspended Plays
     // owner, then XiaoZhi. Even retain the decoded profile here as a worst case.
+    assert(ui_boot_open());lv_tick_inc(940);screenshot("startup-brand");
     ui_plays_open(NULL,NULL,NULL);ui_plays_suspend();
     xz_view_t boot_voice=voice;boot_voice.phase=XZ_BOOT;
     strcpy(boot_voice.detail,"正在准备连接");
     ui_xiaozhi_open(&boot_voice,voice_art(0));
+    screenshot("startup-brand-over-voice");ui_boot_close();
     screenshot("xiaozhi-boot");check_label_bounds(lv_screen_active());
     boot_voice.phase=XZ_WELCOME;boot_voice.revision++;ui_xiaozhi_set_battery(72,4);
     ui_xiaozhi_update(&boot_voice,voice_art(0));screenshot("xiaozhi-welcome");check_label_bounds(lv_screen_active());
@@ -265,6 +268,12 @@ int main(int argc, char **argv) {
     ui_xiaozhi_key(UI_PLAY_BACK,&setting_value);
     for(int i=0;i<3;i++)ui_xiaozhi_key(UI_PLAY_DOWN,&setting_value);
     ui_xiaozhi_key(UI_PLAY_OK,&setting_value);screenshot("xiaozhi-agent");check_label_bounds(lv_screen_active());
+    ui_xiaozhi_key(UI_PLAY_BACK,&setting_value);
+    ui_xiaozhi_key(UI_PLAY_DOWN,&setting_value);
+    ui_xiaozhi_key(UI_PLAY_OK,&setting_value);screenshot("xiaozhi-brightness");check_label_bounds(lv_screen_active());
+    ui_xiaozhi_key(UI_PLAY_BACK,&setting_value);ui_xiaozhi_key(UI_PLAY_DOWN,&setting_value);
+    screenshot("xiaozhi-settings-scrolled");check_label_bounds(lv_screen_active());
+    ui_xiaozhi_key(UI_PLAY_OK,&setting_value);screenshot("xiaozhi-sleep-time");check_label_bounds(lv_screen_active());
     ui_xiaozhi_key(UI_PLAY_BACK,&setting_value);ui_xiaozhi_key(UI_PLAY_BACK,&setting_value);
     voice.phase=XZ_READY; voice.avatar=1; voice.revision++;
     strcpy(voice.detail,"你好，今天想聊些什么？");

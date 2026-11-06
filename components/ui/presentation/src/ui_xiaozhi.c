@@ -6,13 +6,13 @@
 #include "xiaozhi_volume_digits.inc"
 static struct {
   lv_obj_t *root, *previous, *portrait, *message, *badge;
-  lv_obj_t *choice[5], *caption[5], *icon[5], *volume_value, *volume_bar;
+  lv_obj_t *choice[7], *caption[7], *icon[7], *volume_value, *volume_bar;
   lv_timer_t *motion;
   ui_battery_icon_t battery;
   xz_view_t view;
   const companion_portrait_t *art;
   unsigned page, selection, frame, blink_cycle;
-  unsigned edit_volume;
+  unsigned edit_volume, menu_first;
   uint32_t expression_at, blink_started, blink_delay;
   bool greeting, setting_error, welcome_drawn;
 } X;
@@ -31,8 +31,18 @@ void ui_xiaozhi_set_battery(int percent, int level) {
   battery_percent = percent; battery_level = level;
   if (X.root) ui_theme_battery_set(&X.battery, percent, level);
 }
-enum { CHAT, APPEARANCE, MENU, HELP, INTERRUPT_MODE, VOLUME };
-enum { MENU_WIFI, MENU_VOLUME, MENU_INTERRUPT, MENU_AGENT, MENU_RETURN, MENU_COUNT };
+enum { CHAT, APPEARANCE, MENU, HELP, INTERRUPT_MODE, VOLUME, BRIGHTNESS, SLEEP_TIME };
+static unsigned saved_brightness = 100, saved_sleep_minutes = 5;
+void ui_xiaozhi_set_device_settings(unsigned brightness, unsigned sleep_minutes) {
+  saved_brightness = brightness >= 10 && brightness <= 100 ? brightness : 100;
+  saved_sleep_minutes = sleep_minutes <= 1440 ? sleep_minutes : 5;
+}
+static void render(void);
+static bool value_page(void) { return X.page == VOLUME || X.page == BRIGHTNESS || X.page == SLEEP_TIME; }
+static unsigned settings_menu(void) {
+  return X.page == VOLUME ? 1 : X.page == BRIGHTNESS ? 4 : X.page == SLEEP_TIME ? 5 : 2;
+}
+enum { MENU_WIFI, MENU_VOLUME, MENU_INTERRUPT, MENU_AGENT, MENU_BRIGHTNESS, MENU_SLEEP, MENU_RETURN, MENU_COUNT };
 static const char *phase_name(xz_phase_t p) {
   switch (p) {
   case XZ_BOOT: case XZ_WELCOME: case XZ_SETUP: case XZ_LISTEN:
@@ -107,7 +117,7 @@ static const char *primary_action(xz_phase_t phase) {
   return "结束";
 }
 static void set_focus(unsigned index, bool selected) {
-  if (index >= 5 || !X.choice[index]) return;
+  if (index >= MENU_COUNT || !X.choice[index]) return;
   lv_obj_set_style_bg_color(X.choice[index], lv_color_hex(selected ? XZ_UI_ACCENT : XZ_UI_PANEL), 0);
   lv_obj_set_style_border_color(X.choice[index], lv_color_hex(selected ? XZ_UI_ACCENT : XZ_UI_LINE), 0);
   lv_obj_set_style_text_color(X.caption[index], lv_color_hex(selected ? XZ_UI_ON_ACCENT : XZ_UI_INK), 0);
@@ -116,6 +126,9 @@ static void set_focus(unsigned index, bool selected) {
 }
 static void select_item(unsigned next) {
   if (X.selection == next) return;
+  if (X.page == MENU && (next < X.menu_first || next >= X.menu_first + 5)) {
+    X.selection = next; render(); return;
+  }
   set_focus(X.selection, false);
   X.selection = next;
   set_focus(next, true);
@@ -210,24 +223,29 @@ static void render(void) {
     text("小智", 93, 12, 70, &ui_font_title, XZ_UI_INK);
   } else text(X.page == APPEARANCE ? "换个形象" : X.page == MENU ? "小智设置" :
        X.page == INTERRUPT_MODE ? "打断方式" : X.page == VOLUME ? "调整音量" :
+       X.page == BRIGHTNESS ? "屏幕亮度" : X.page == SLEEP_TIME ? "休眠时间" :
        "智能体设置", 16, 14, 180, &ui_font_title, XZ_UI_INK);
   ui_theme_battery_create(&X.battery, X.root);
   ui_theme_battery_set(&X.battery, battery_percent, battery_level);
   if (X.page == MENU) {
     static const char *const items[MENU_COUNT] = {
-        "重新配网", "调整音量", "打断方式", "智能体设置", "返回"};
+        "重新配网", "调整音量", "打断方式", "智能体设置", "屏幕亮度", "休眠时间", "返回"};
     static const char *const icons[MENU_COUNT] = {
-        LV_SYMBOL_WIFI, LV_SYMBOL_VOLUME_MAX, LV_SYMBOL_PAUSE, LV_SYMBOL_SETTINGS, LV_SYMBOL_LEFT};
-    for (unsigned i = 0; i < MENU_COUNT; i++) {
+        LV_SYMBOL_WIFI, LV_SYMBOL_VOLUME_MAX, LV_SYMBOL_PAUSE, LV_SYMBOL_SETTINGS, LV_SYMBOL_EYE_OPEN, LV_SYMBOL_POWER, LV_SYMBOL_LEFT};
+    if (X.selection < X.menu_first) X.menu_first = X.selection;
+    if (X.selection >= X.menu_first + 5) X.menu_first = X.selection - 4;
+    if (X.menu_first > MENU_COUNT - 5) X.menu_first = MENU_COUNT - 5;
+    for (unsigned i = X.menu_first; i < X.menu_first + 5; i++) {
       lv_obj_t *row =
-          panel(X.root, 14, 54 + 45 * i, 212, 38, X.selection == i);
+          panel(X.root, 14, 54 + 45 * (i - X.menu_first), 212, 38, X.selection == i);
       X.choice[i] = row;
       X.icon[i] = ui_theme_text(row, icons[i], 12, 11, 22, &lv_font_montserrat_14,
                     X.selection == i ? XZ_UI_ON_ACCENT : XZ_UI_ACCENT);
       X.caption[i] = ui_theme_text(row, items[i], 42, 8, 158, &ui_font_title,
                     X.selection == i ? XZ_UI_ON_ACCENT : XZ_UI_INK);
     }
-    footer("上下选择   确定进入");
+    char hint[64]; snprintf(hint, sizeof hint, "%u-%u/%u   上下选择", X.menu_first + 1, X.menu_first + 5, MENU_COUNT);
+    footer(hint);
     return;
   }
   if (X.page == INTERRUPT_MODE) {
@@ -244,10 +262,19 @@ static void render(void) {
     footer("上下选择   确定选用");
     return;
   }
-  if (X.page == VOLUME) {
+  if (value_page()) {
     char volume[16]; snprintf(volume, sizeof volume, "%u", X.edit_volume);
     X.volume_value = text(volume, 16, 91, 208, &xz_volume_digits, XZ_UI_INK);
     center(X.volume_value);
+    if (X.page == SLEEP_TIME) {
+      lv_label_set_text_fmt(X.volume_value, "%u", X.edit_volume);
+      center(text(X.edit_volume ? "分钟后休眠" : "不自动休眠", 16, 165, 208, &ui_font_title, XZ_UI_INK));
+      center(text("结束对话后开始计时", 16, 211, 208, &ui_font_body, XZ_UI_MUTED));
+      center(text(X.setting_error ? "保存失败，请重试" : "上下调整 · 确定保存", 12, 249, 216, &ui_font_body,
+                  X.setting_error ? XZ_UI_ACCENT : XZ_UI_MUTED));
+      footer("长按确定   取消");
+      return;
+    }
     lv_obj_t *bar = X.volume_bar = lv_bar_create(X.root);
     lv_obj_set_pos(bar, 40, 170); lv_obj_set_size(bar, 160, 12);
     lv_obj_set_style_bg_color(bar, lv_color_hex(XZ_UI_LINE), LV_PART_MAIN);
@@ -256,8 +283,8 @@ static void render(void) {
     lv_obj_set_style_bg_color(bar, lv_color_hex(XZ_UI_ACCENT), LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_INDICATOR);
     lv_obj_set_style_radius(bar, 6, LV_PART_INDICATOR);
-    text(LV_SYMBOL_VOLUME_MID, 16, 167, 20, &lv_font_montserrat_14, XZ_UI_ACCENT);
-    text(LV_SYMBOL_VOLUME_MAX, 204, 167, 24, &lv_font_montserrat_14, XZ_UI_ACCENT);
+    text(X.page == BRIGHTNESS ? LV_SYMBOL_EYE_CLOSE : LV_SYMBOL_VOLUME_MID, 16, 167, 20, &lv_font_montserrat_14, XZ_UI_ACCENT);
+    text(X.page == BRIGHTNESS ? LV_SYMBOL_EYE_OPEN : LV_SYMBOL_VOLUME_MAX, 204, 167, 24, &lv_font_montserrat_14, XZ_UI_ACCENT);
     lv_bar_set_range(bar, 0, 100); lv_bar_set_value(bar, X.edit_volume, LV_ANIM_OFF);
     center(text("上下调整 · 确定保存", 12, 215, 216, &ui_font_title, XZ_UI_INK));
     if (X.setting_error) center(text("保存失败，请重试", 12, 249, 216, &ui_font_title, XZ_UI_ACCENT));
@@ -418,9 +445,9 @@ void ui_xiaozhi_update(const xz_view_t *v, const companion_portrait_t *art) {
 void ui_xiaozhi_setting_result(bool saved) {
   if (!X.root) return;
   X.setting_error = !saved;
-  if (X.page == VOLUME || X.page == INTERRUPT_MODE) {
+  if (value_page() || X.page == INTERRUPT_MODE) {
     if (saved) {
-      X.selection = X.page == VOLUME ? MENU_VOLUME : MENU_INTERRUPT;
+      X.selection = settings_menu();
       X.page = MENU;
     }
     render();
@@ -434,26 +461,44 @@ ui_xz_action_t ui_xiaozhi_key(ui_play_key_t key, unsigned *avatar) {
   if (key == UI_PLAY_BACK) {
     if (X.page == CHAT && X.view.restart_required) return UI_XZ_EXIT;
     unsigned previous = X.page;
-    X.page = previous == VOLUME || previous == INTERRUPT_MODE || previous == HELP ||
+    bool cancel_brightness = previous == BRIGHTNESS;
+    unsigned menu = settings_menu();
+    X.page = value_page() || previous == INTERRUPT_MODE || previous == HELP ||
              previous == CHAT ? MENU : CHAT;
-    X.selection = previous == VOLUME ? MENU_VOLUME : previous == INTERRUPT_MODE ? MENU_INTERRUPT :
+    X.selection = previous == VOLUME || previous == BRIGHTNESS || previous == SLEEP_TIME ? menu : previous == INTERRUPT_MODE ? MENU_INTERRUPT :
                   previous == HELP ? MENU_AGENT : previous == APPEARANCE ? 1 : 0;
     X.setting_error = false;
     render();
-    return UI_XZ_NONE;
+    return cancel_brightness ? UI_XZ_BRIGHTNESS_CANCEL : UI_XZ_NONE;
   }
-  if (X.page == VOLUME) {
+  if (value_page()) {
     unsigned before = X.edit_volume;
-    if (key == UI_PLAY_UP) X.edit_volume = X.edit_volume >= 95 ? 100 : X.edit_volume + 5;
-    else if (key == UI_PLAY_DOWN) X.edit_volume = X.edit_volume <= 5 ? 0 : X.edit_volume - 5;
+    if (X.page == SLEEP_TIME && (key == UI_PLAY_UP || key == UI_PLAY_DOWN)) {
+      static const unsigned minutes[] = {0, 1, 3, 5, 10, 15, 30, 60};
+      if (key == UI_PLAY_UP) {
+        X.edit_volume = 0;
+        for (unsigned i = 0; i < sizeof minutes / sizeof minutes[0]; i++)
+          if (minutes[i] > before) { X.edit_volume = minutes[i]; break; }
+      } else {
+        X.edit_volume = 60;
+        for (unsigned i = sizeof minutes / sizeof minutes[0]; i > 0; i--)
+          if (minutes[i-1] < before) { X.edit_volume = minutes[i-1]; break; }
+      }
+    } else if (key == UI_PLAY_UP) X.edit_volume = X.edit_volume >= 95 ? 100 : X.edit_volume + 5;
+    else if (key == UI_PLAY_DOWN) {
+      unsigned minimum = X.page == BRIGHTNESS ? 10 : 0;
+      X.edit_volume = X.edit_volume <= minimum + 5 ? minimum : X.edit_volume - 5;
+    }
     else if (key == UI_PLAY_OK) {
       *avatar = X.edit_volume;
       X.setting_error = false;
-      return UI_XZ_VOLUME;
+      return X.page == BRIGHTNESS ? UI_XZ_BRIGHTNESS : X.page == SLEEP_TIME ? UI_XZ_SLEEP : UI_XZ_VOLUME;
     }
     if (X.edit_volume != before) {
+      if (X.page == SLEEP_TIME) { render(); return UI_XZ_NONE; }
       lv_label_set_text_fmt(X.volume_value, "%u", X.edit_volume);
       lv_bar_set_value(X.volume_bar, X.edit_volume, LV_ANIM_OFF);
+      if (X.page == BRIGHTNESS) { *avatar = X.edit_volume; return UI_XZ_BRIGHTNESS_PREVIEW; }
     }
     return UI_XZ_NONE;
   }
@@ -503,8 +548,11 @@ ui_xz_action_t ui_xiaozhi_key(ui_play_key_t key, unsigned *avatar) {
       unsigned s = X.selection;
       X.selection = 0;
       X.setting_error = false;
-      X.page = s == MENU_VOLUME ? VOLUME : s == MENU_INTERRUPT ? INTERRUPT_MODE :
+      X.page = s == MENU_VOLUME ? VOLUME : s == MENU_BRIGHTNESS ? BRIGHTNESS :
+               s == MENU_SLEEP ? SLEEP_TIME : s == MENU_INTERRUPT ? INTERRUPT_MODE :
                s == MENU_AGENT ? HELP : CHAT;
+      if (s == MENU_BRIGHTNESS) X.edit_volume = saved_brightness;
+      if (s == MENU_SLEEP) X.edit_volume = saved_sleep_minutes;
       if (s == MENU_VOLUME) X.edit_volume = X.view.volume <= 100 ? X.view.volume : 100;
       if (s == MENU_INTERRUPT) X.selection = X.view.natural_interrupt ? 1 : 0;
       render();

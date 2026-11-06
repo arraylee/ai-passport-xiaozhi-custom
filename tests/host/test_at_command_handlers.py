@@ -50,6 +50,9 @@ static void xiaozhi_stop(void) { ++voice_stops; }
 static unsigned test_entries; static bool test_voice;
 static int at_test_entry(bool voice,char*out,int n){test_entries++;test_voice=voice;return snprintf(out,n,"+OK test_entry");}
 static int s_au, last_volume;
+static void *s_disp=(void*)1;
+static unsigned brightness_applied=100;
+static void hal_display_set_backlight(void*d,uint8_t value){assert(d==s_disp);brightness_applied=value;}
 static uint8_t identity_ram[8]={0xa1,0x22,0x34,0x46,0x58,0x6a,0x7c,0x8e};
 static uint8_t wifi_ram[8]={0xb2,0x23,0x35,0x47,0x59,0x6b,0x7d,0x8f};
 static char reply[512];
@@ -186,7 +189,7 @@ class AtCommandHandlers(unittest.TestCase):
         app = (ROOT / "components/app/src/app.c").read_text()
         source = directory / "test.c"
         source.write_text(BOUNDARY + "\n".join(function(app,name) for name in
-                          ("at_after","at_is","at_decimal","at_reply","at_reboot","at_binding_reset","on_at_command")) + CASES)
+                          ("plays_get_brightness","plays_preview_brightness","plays_set_brightness","plays_get_sleep_minutes","at_after","at_is","at_decimal","at_reply","at_reboot","at_binding_reset","on_at_command")) + CASES)
         cls.executable = directory / "test"
         run_host(["cc","-std=c11","-UNDEBUG","-Wall","-Wextra","-Werror",f"-fsanitize={cls.sanitizers}",
                   "-fno-sanitize-recover=all","-g","-I"+str(ROOT/"components/core/services/include"),

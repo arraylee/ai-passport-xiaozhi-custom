@@ -1,6 +1,17 @@
 // components/core/services/src/profile_ctl.c —— profile 默认值 + 定长 blob 序列化(纯逻辑)
 #include "services/profile_ctl.h"
 #include <string.h>
+#include <stddef.h>
+
+// Exact deployed v16 ABI; appending brightness must not shift old fields.
+typedef struct {
+    char name[48], role[40], subtitle[85];
+    int battery, level, xp, xp_max; bool online;
+    int token, token_max, sleep_min, game_total, game_best;
+    uint8_t img_mode; int volume; bool pet_enabled; uint8_t pet_type;
+    char avatar_name[16];
+} profile_v16_t;
+_Static_assert(offsetof(profile_data_t, brightness) == sizeof(profile_v16_t), "v16 prefix ABI");
 
 typedef struct {
     char name[48];
@@ -45,6 +56,7 @@ void profile_ctl_init(profile_data_t *d) {
     d->battery = 82; d->level = 1; d->xp = 0; d->xp_max = 100; d->online = true;
     d->token = 0; d->token_max = TOKEN_MAX_DEFAULT;
     d->sleep_min = SLEEP_MIN_DEFAULT;
+    d->brightness = BRIGHTNESS_DEFAULT;
     d->game_total = 0; d->game_best = 0;
     d->img_mode = IMG_MODE_AVATAR;   // 默认头像位显示
     d->volume = VOLUME_DEFAULT;      // codec 输出音量默认 95%
@@ -63,6 +75,14 @@ int profile_deserialize(profile_data_t *d, const uint8_t *buf, int len) {
     if (d == NULL || buf == NULL || len < 1) return -1;
     if (buf[0] == PROFILE_BLOB_VER && len == PROFILE_BLOB_SIZE) {
         memcpy(d, buf + 1, sizeof(*d));
+        if (d->brightness < BRIGHTNESS_MIN || d->brightness > 100) d->brightness = BRIGHTNESS_DEFAULT;
+        if (d->sleep_min < 0 || d->sleep_min > SLEEP_MIN_MAX) d->sleep_min = SLEEP_MIN_DEFAULT;
+        return 0;
+    }
+    if (buf[0] == 16 && len == 1 + (int)sizeof(profile_v16_t)) {
+        profile_ctl_init(d);
+        memcpy(d, buf + 1, sizeof(profile_v16_t));
+        if (d->sleep_min == 10) d->sleep_min = SLEEP_MIN_DEFAULT;
         return 0;
     }
     if ((buf[0] == 14 || buf[0] == 15) && len == 1 + (int)sizeof(profile_v15_t)) {

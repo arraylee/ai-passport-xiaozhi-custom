@@ -7,7 +7,8 @@ TEST_CASE("profile default has new fields", "[profile]") {
     TEST_ASSERT_EQUAL_STRING("FoloToy", d.name);
     TEST_ASSERT_EQUAL_INT(0, d.token);
     TEST_ASSERT_EQUAL_INT(TOKEN_MAX_DEFAULT, d.token_max);
-    TEST_ASSERT_EQUAL_INT(10, d.sleep_min);
+    TEST_ASSERT_EQUAL_INT(5, d.sleep_min);
+    TEST_ASSERT_EQUAL_INT(100, d.brightness);
     TEST_ASSERT_EQUAL_STRING("default", d.avatar_name);
 }
 

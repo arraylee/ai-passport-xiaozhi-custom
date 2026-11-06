@@ -1,0 +1,25 @@
+FoloToy startup resources
+
+Logo: FoloToy/folotoy-doc, static/img/folotoy-logo.svg
+https://github.com/FoloToy/folotoy-doc
+Git blob: 1ec9d96110f788d81875dd6bec17226b121b2e16
+Original SHA-256: cdd9f95dc19782224fdb72c015677bbfad18ef7a6f73140eb7b9b746bec3af3b
+The FoloToy logo and name remain their owner's marks.
+
+Music: FoloToy MagicBox application, main/assets/common/success.ogg
+Used by its startup completion path as Lang::Sounds::OGG_SUCCESS.
+Retrieved from the account-accessible FoloToy/magicbox-internal application
+at the project owner's explicit request. Public FoloToy/magicbox main
+contains the BSP; it does not contain this application resource.
+Git blob: ced190267fe4b1decfa16f0732deb4dad2b60175
+Original SHA-256: c6bcb6322575df4ddaaa266c388d287338e8f857e85d4b5e3d90e8ee6ea2d678
+No separate upstream license was supplied for this sound. This source note
+is attribution, not an additional license grant.
+
+Original input files: assets/source/boot/
+Reproduction: python tools/prepare_boot_assets.py
+Requires Pillow, numpy, av and pymupdf only when regenerating these assets.
+Output: 112x112 logo split into four Flash A4 masks (12,544 bytes);
+16 kHz mono IMA ADPCM sound (8,960 bytes / 17,920 samples, 100 ms tail silence).
+Playback preserves original source level and uses calibrated device volume.
+No Nintendo graphics or sound are included; animation is implemented locally.

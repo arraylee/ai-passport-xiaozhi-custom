@@ -99,9 +99,9 @@ int main(int argc, char **argv) {
     if(scenario==4) { now_ms=60000; new_input=true; idle_check_cb(0); assert(!sleeps&&!shutdowns&&cancels==1); }
     if(scenario==5) { now_ms=60000; pending=true; idle_check_cb(0); assert(!sleeps&&!shutdowns); pending=false; idle_check_cb(0); assert(sleeps==1); }
     if(scenario==6) { s_factory_command_active=true; now_ms=3600000; idle_check_cb(0); assert(!sleeps&&!shutdowns); }
-    if(scenario==7) { profile_ctl_init(&s_profile); now_ms=599999; idle_check_cb(0); assert(!sleeps&&!shutdowns); now_ms=600000; idle_check_cb(0); assert(sleeps==1); }
+    if(scenario==7) { profile_ctl_init(&s_profile); now_ms=299999; idle_check_cb(0); assert(!sleeps&&!shutdowns); now_ms=300000; idle_check_cb(0); assert(sleeps==1); }
     if(scenario==8 || scenario==9) {
-        const xz_phase_t busy_phases[]={XZ_BIND,XZ_WIFI,XZ_CLOUD,XZ_LISTEN,XZ_THINK,XZ_SPEAK,XZ_STANDBY,XZ_WAKING,XZ_FAREWELL};
+        const xz_phase_t busy_phases[]={XZ_BIND,XZ_WIFI,XZ_CLOUD,XZ_LISTEN,XZ_THINK,XZ_SPEAK,XZ_WAKING,XZ_FAREWELL};
         voice_view.phase=busy_phases[atoi(argv[2])];
         now_ms=1800000; idle_check_cb(0); assert(!sleeps&&!shutdowns);
         now_ms=1800250; idle_check_cb(0); assert(!sleeps&&!shutdowns);
@@ -113,9 +113,9 @@ int main(int argc, char **argv) {
     if(scenario==10) { atomic_store(&active, -1); voice_view.phase=XZ_SETUP; now_ms=60000; idle_check_cb(0); assert(sleeps==1); }
     if(scenario==11) {
         profile_ctl_init(&s_profile);voice_view.phase=XZ_SETUP;
-        now_ms=300000;idle_check_cb(0);assert(!sleeps);
-        now_ms=599999;idle_check_cb(0);assert(!sleeps);
-        now_ms=600000;idle_check_cb(0);assert(sleeps==1);
+        now_ms=150000;idle_check_cb(0);assert(!sleeps);
+        now_ms=299999;idle_check_cb(0);assert(!sleeps);
+        now_ms=300000;idle_check_cb(0);assert(sleeps==1);
     }
     if(scenario==12) {
         voice_view.phase=XZ_SETUP;now_ms=59999;assert(note_portal_activity());
@@ -132,6 +132,14 @@ int main(int argc, char **argv) {
         idle_check_cb(0);assert(!sleeps&&!s_sleep_preparing);
         now_ms=119999;idle_check_cb(0);assert(!sleeps);
         now_ms=120000;idle_check_cb(0);assert(sleeps==1);
+    }
+    if(scenario==15) {
+        profile_ctl_init(&s_profile); voice_view.phase=XZ_LISTEN;
+        now_ms=123456;idle_check_cb(0);assert(!sleeps);
+        voice_view.phase=XZ_STANDBY;
+        now_ms=123706;idle_check_cb(0);assert(!sleeps);
+        now_ms=423455;idle_check_cb(0);assert(!sleeps);
+        now_ms=423456;idle_check_cb(0);assert(sleeps==1&&shutdowns==4);
     }
     return 0;
 }
@@ -161,12 +169,12 @@ class DemoIdlePolicy(unittest.TestCase):
             with self.subTest(scenario=scenario):
                 self.run_scenario(scenario)
 
-    def test_new_profile_stays_awake_for_ten_minutes(self):
+    def test_new_profile_stays_awake_for_five_minutes(self):
         self.run_scenario(7)
 
     def test_busy_phases_protect_sleep_then_ready_and_error_get_fresh_window(self):
         for transition,scenario in [('ready',8),('error',9)]:
-            for phase in range(9):
+            for phase in range(8):
                 with self.subTest(transition=transition,phase=phase):
                     self.run_scenario(scenario,phase)
 
@@ -176,3 +184,6 @@ class DemoIdlePolicy(unittest.TestCase):
     def test_waiting_for_phone_uses_device_sleep_and_accepts_activity(self):
         for scenario in (11,12,13,14):
             with self.subTest(scenario=scenario): self.run_scenario(scenario)
+
+    def test_online_standby_sleeps_five_minutes_after_conversation(self):
+        self.run_scenario(15)

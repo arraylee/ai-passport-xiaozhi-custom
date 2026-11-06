@@ -38,6 +38,7 @@ void ui_xiaozhi_setting_result(bool saved) { assert(lock_depth());reported_saved
 void xiaozhi_avatar(unsigned n) { (void)n; }
 void xiaozhi_snapshot(xz_view_t *view) { memset(view,0,sizeof *view); view->restart_required=fake_xz_fault; view->phase=fake_xz_fault?XZ_ERROR:fake_xz_phase; }
 const companion_portrait_t *companion_avatar(unsigned n) { (void)n; return NULL; }
+void ui_xiaozhi_set_device_settings(unsigned brightness, unsigned sleep_minutes) { (void)brightness; (void)sleep_minutes; }
 void ui_xiaozhi_open(const xz_view_t *v,const companion_portrait_t *p) { (void)v; (void)p; }
 void ui_xiaozhi_close(void) { xz_closes++; }
 void ui_xiaozhi_update(const xz_view_t *v,const companion_portrait_t *p) { (void)v; (void)p; }
@@ -584,6 +585,33 @@ static void voice_settings_and_button_interruption(void) {
     assert(mode_changes==2&&reported_saved&&xz_stop_requests&&xz_restart);
     fake_xz_running=false;pump();assert(fake_xz_running&&!xz_restart);
 }
+
+static unsigned device_brightness=100,device_sleep=5,previews,setting_writes;
+static unsigned get_brightness(void*u){(void)u;return device_brightness;}
+static unsigned get_sleep(void*u){(void)u;return device_sleep;}
+static bool preview(void*u,unsigned n){(void)u;assert(!lock_depth());previews++;applied_setting=n;return true;}
+static bool save_brightness(void*u,unsigned n){(void)u;assert(!lock_depth());setting_writes++;if(setting_saved)device_brightness=n;return setting_saved;}
+static bool save_sleep(void*u,unsigned n){(void)u;assert(!lock_depth());setting_writes++;if(setting_saved)device_sleep=n;return setting_saved;}
+static void setting_key(ui_xz_action_t action,unsigned value){next_xz_action=action;setting_value=value;key(fake_ms+400,2,HAL_BTN_PRESS);key(fake_ms+100,2,HAL_BTN_RELEASE);}
+static void device_settings_worker(void){
+ reset_app();child_exited(NULL);pump();assert(launch(UI_PLAY_XIAOZHI));pump();
+ C.get_brightness=get_brightness;C.get_sleep_minutes=get_sleep;C.preview_brightness=preview;C.set_brightness=save_brightness;C.set_sleep_minutes=save_sleep;
+ previews=setting_writes=0;device_brightness=100;device_sleep=5;
+ setting_key(UI_XZ_BRIGHTNESS_PREVIEW,55);assert(previews==1&&applied_setting==55&&!setting_writes);
+ setting_key(UI_XZ_BRIGHTNESS_CANCEL,0);assert(previews==2&&applied_setting==100&&!setting_writes);
+ setting_key(UI_XZ_BRIGHTNESS,55);assert(setting_writes==1&&reported_saved&&device_brightness==55);
+ setting_saved=false;setting_key(UI_XZ_SLEEP,30);assert(!reported_saved&&device_sleep==5);
+ setting_saved=true;setting_key(UI_XZ_SLEEP,30);assert(reported_saved&&device_sleep==30);
+ assert(!xz_stop_requests&&!xz_restart);
+}
+static void standby_sleep_cancel_recovers(void){
+ reset_app();assert(launch(UI_PLAY_XIAOZHI));pump();fake_xz_phase=XZ_STANDBY;
+ assert(!app_plays_voice_busy());
+ assert(!app_plays_prepare_sleep());steps(1);assert(xz_stop_requests&&xz_restart&&!xz_setup);
+ fake_xz_running=false;steps(1);assert(play_sleep_frozen(&sleep_gate));
+ app_plays_cancel_sleep();pump();assert(fake_xz_running&&!xz_restart&&!forced_setup);
+}
+
 static void idle_has_no_background_audio_or_draw(void) {
     reset_app();
     steps(150); // More than the former 60-second pet checkpoint interval.
@@ -700,6 +728,8 @@ static void welcome_bottom_key(void) {
 int main(int argc, char **argv) {
     if (argc == 1) input_regressions();
     const struct { const char *name; void (*run)(void); } tests[] = {
+        {"device_settings_worker",device_settings_worker},
+        {"standby_sleep_cancel_recovers",standby_sleep_cancel_recovers},
         {"welcome_bottom_key", welcome_bottom_key},
         {"boot_starts_normal_voice_flow", boot_starts_normal_voice_flow},
         {"setup_sleeps_and_reopens", setup_sleeps_and_reopens},

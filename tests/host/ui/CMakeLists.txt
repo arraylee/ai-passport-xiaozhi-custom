@@ -188,7 +188,7 @@ target_include_directories(test_xiaozhi_ui PRIVATE ${xz_includes} "${REPO}/compo
 target_compile_options(test_xiaozhi_ui PRIVATE -UNDEBUG)
 target_link_libraries(test_xiaozhi_ui PRIVATE lvgl m ZLIB::ZLIB)
 add_test(NAME xiaozhi_ui COMMAND test_xiaozhi_ui)
-target_sources(render_ui PRIVATE "${PRESENTATION}/src/ui_xiaozhi.c")
+target_sources(render_ui PRIVATE "${PRESENTATION}/src/ui_xiaozhi.c" "${PRESENTATION}/src/ui_boot.c")
 target_include_directories(render_ui PRIVATE "${REPO}/components/platform/xiaozhi/include")
 
 # Actual production overlays and immutable reward ARGB art, with no UI stubs.
@@ -260,3 +260,9 @@ set_tests_properties(rounded_retained_render PROPERTIES TIMEOUT 75)
 target_sources(test_wake_boot PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/platform_display_production.inc"
     "${PRESENTATION}/src/ui_selftest.c")
 target_include_directories(test_wake_boot PRIVATE "${REPO}/components/platform/platform_esp32/include")
+
+add_executable(test_boot_ui test_boot_ui.c "${PRESENTATION}/src/ui_boot.c" "${PRESENTATION}/src/ui_xiaozhi.c" ${xz_sources})
+target_include_directories(test_boot_ui PRIVATE ${xz_includes} "${REPO}/components/platform/xiaozhi/include")
+target_compile_options(test_boot_ui PRIVATE -UNDEBUG)
+target_link_libraries(test_boot_ui PRIVATE lvgl m ZLIB::ZLIB)
+add_test(NAME boot_animation COMMAND test_boot_ui)

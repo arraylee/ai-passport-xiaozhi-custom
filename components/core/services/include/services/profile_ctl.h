@@ -14,7 +14,7 @@ typedef struct {
     bool     online;
     int      token;          // 积分余额 >=0
     int      token_max;      // token 进度条上限(默认 40000,可由 BLE 下发)
-    int      sleep_min;      // 空闲后进入深度睡眠的分钟数;0=永不。默认 10
+    int      sleep_min;      // 对话结束后空闲深睡分钟数;0=永不。默认 5
     int      game_total;     // 小游戏累计总积分(每局累加;同步后由小程序清零)
     int      game_best;      // 小游戏单局最高积分(同步后由小程序清零)
     uint8_t  img_mode;       // BLE 图片显示模式:0=头像位(默认) 1=全屏
@@ -22,6 +22,7 @@ typedef struct {
     bool     pet_enabled;    // 宠物功能开关(token 广播 op=0x05 控制);开则 dock 显示 PET
     uint8_t  pet_type;       // 宠物类型(1..N),pet_enabled 时有效
     char     avatar_name[16];// 内置头像资源名:[a-z0-9_-]{1,15}
+    int      brightness;     // 屏幕亮度 10..100;默认 100
 } profile_data_t;
 
 // 图片显示模式
@@ -29,10 +30,12 @@ typedef struct {
 #define IMG_MODE_FULLSCREEN  1   // 全屏显示约 6 秒后退回
 
 #define TOKEN_MAX_DEFAULT     40000  // token 进度条默认上限(BLE 未下发 token_max 时用)
-#define SLEEP_MIN_DEFAULT     10     // 深度睡眠默认空闲分钟数;已有用户设置保持不变
+#define SLEEP_MIN_DEFAULT     5      // 深度睡眠默认空闲分钟数;已有用户设置保持不变
 #define SLEEP_MIN_MAX         1440   // 上限 24 小时
 #define VOLUME_DEFAULT        95     // codec 输出音量默认 95%
-#define PROFILE_BLOB_VER      16  // v16:简介容量扩至 28 个 Unicode 字符
+#define BRIGHTNESS_DEFAULT    100
+#define BRIGHTNESS_MIN        10
+#define PROFILE_BLOB_VER      17  // v17:亮度持久化，原默认待机 10 分钟迁移为 5 分钟
 #define PROFILE_BLOB_SIZE     (1 + (int)sizeof(profile_data_t))  // [ver][struct]
 
 void profile_ctl_init(profile_data_t *d);   // 出厂默认

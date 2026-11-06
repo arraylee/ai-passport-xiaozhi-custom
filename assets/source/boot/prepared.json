@@ -1,0 +1,15 @@
+{
+  "source": "FoloToy MagicBox startup OGG_SUCCESS",
+  "sample_rate": 16000,
+  "samples": 17920,
+  "duration_ms": 1120,
+  "encoded_bytes": 8960,
+  "encoded_sha256": "2e7af246edb20024e78e667a12055d0c6ae6f73aa91176c1844a5ab0545167f0",
+  "pcm_sha256": "e66dc67e39530b9f8b11aace338e56b0e594fc7c823235382912b163101b8bc5",
+  "snr_db": 33.33,
+  "logo_mask_bytes": 12544,
+  "source_sha256": {
+    "folotoy-logo.svg": "cdd9f95dc19782224fdb72c015677bbfad18ef7a6f73140eb7b9b746bec3af3b",
+    "magicbox-success.ogg": "c6bcb6322575df4ddaaa266c388d287338e8f857e85d4b5e3d90e8ee6ea2d678"
+  }
+}
