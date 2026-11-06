@@ -24,8 +24,14 @@ int main(int argc,char**argv){
  lv_display_set_buffers(d,buffer,NULL,sizeof buffer,LV_DISPLAY_RENDER_MODE_PARTIAL);lv_display_set_flush_cb(d,flush);
  lv_obj_t*home=lv_screen_active();unsigned before=lv_obj_get_child_count(lv_layer_top());
  assert(ui_boot_open()&&ui_boot_open());assert(!ui_boot_drawn());
- for(unsigned frame=0;frame<50;frame++){step(33);assert(ui_boot_drawn());dark_corners();if(argc==2)ppm(argv[1],frame);}
- unsigned pink=0;for(unsigned i=0;i<240*320;i++)pink+=(screen[i]>>11)>15&&((screen[i]>>5)&63)<20;assert(pink>4000);
+ for(unsigned frame=0;frame<104;frame++){step(33);assert(ui_boot_drawn());dark_corners();if(argc==2)ppm(argv[1],frame);}
+ unsigned pink=0;for(unsigned i=0;i<240*320;i++)pink+=(screen[i]>>11)>15&&((screen[i]>>5)&63)<20;assert(pink>3000);
+ // The settled boot view contains only the centered wordmark, no labels or icon.
+ for(unsigned y=0;y<320;y++)for(unsigned x=0;x<240;x++)
+  if(x<16||x>=224||y<137||y>=182)assert(screen[y*240+x]==0);
+ lv_obj_t*overlay=lv_obj_get_child(lv_layer_top(),-1);
+ assert(lv_obj_get_child_count(overlay)==2);
+ for(unsigned i=0;i<2;i++)assert(lv_obj_check_type(lv_obj_get_child(overlay,i),&lv_image_class));
  xz_view_t view={.phase=XZ_BOOT};ui_xiaozhi_open(&view,NULL);step(33);dark_corners();
  ui_boot_close();ui_boot_close();ui_xiaozhi_close();step(40);assert(lv_screen_active()==home&&lv_obj_get_child_count(lv_layer_top())==before);
  lv_mem_monitor_t initial,last;lv_mem_monitor(&initial);

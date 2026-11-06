@@ -7,9 +7,18 @@
   "encoded_sha256": "371746ec480327a1dc7af3c80be6757b6eefb532a9d01006695caf35f29c4b67",
   "pcm_sha256": "566381edec91d6121971a49c8c2303a5a36f934a6e7a962ee7738641185d1075",
   "snr_db": 28.68,
-  "logo_mask_bytes": 10000,
+  "logo_mask_bytes": 4815,
+  "logo_size": [
+    208,
+    45
+  ],
+  "logo_rgb": [
+    242,
+    0,
+    111
+  ],
   "source_sha256": {
-    "folotoy-logo.svg": "cdd9f95dc19782224fdb72c015677bbfad18ef7a6f73140eb7b9b746bec3af3b",
-    "magicbox-open.mp3": "929469f31ae572ce42e70ec177f6edd41da52b6eb54049f11f8f9dbe23a2686e"
+    "magicbox-open.mp3": "929469f31ae572ce42e70ec177f6edd41da52b6eb54049f11f8f9dbe23a2686e",
+    "folotoy-logo-pink.png": "d0d687e56f286300f75b05cf49ea9947b574b86aca5b6362e4e1eff09d97c2a9"
   }
 }
