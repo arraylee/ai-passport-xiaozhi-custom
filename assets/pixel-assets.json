@@ -1,0 +1,131 @@
+{
+  "sources": {
+    "assets/source/bobo/bobo-actions-source.png": "7fb78fe7eae8c804ec1e109aa55350b129051c35d87ededc1c80a738488aa211",
+    "assets/source/dodge/obstacles-source.png": "2475111f67e829a14263ef52797319b32f873869ac0333777b368ae638c2cff4",
+    "assets/avatars/avatar-01.png": "665dd1e49c22612d4439bc41cc57080bb4a6c16d916764b171ac2c1e70be6dd3",
+    "assets/avatars/avatar-02.png": "d55d827f6dd61bbeadf062e4f018f9c45a8a54d0db0a51315887136be0b502df",
+    "assets/avatars/avatar-03.png": "6214a4b3a88473bc71ce2e551ad3022ba84399c652031c357f891d76061535bf",
+    "assets/avatars/avatar-04.png": "039ca0a792a03d89b47112b411d9a1ccb4250b14d5ad6fa00e6e9f9be7491e0a",
+    "assets/avatars/avatar-05.png": "39c1f58aa5be497ee0f71d7f1c8c5405c29d29d94f23bf7e0eb5a78f6f89a2cc",
+    "assets/avatars/avatar-06.png": "25412f587c5885fb9e1f44886bef66fc00ac823e40e5fd1419119e806e37ebda",
+    "assets/avatars/avatar-07.png": "e46d73743028c32f0db6575c74ce067c2180074e123d367d3881e9cabc167b26",
+    "assets/avatars/avatar-08.png": "e278a0f5f8947679a391884db74a9ae7149258b6691cefd2ae0e8440061a7803"
+  },
+  "sprites": [
+    {
+      "id": "wave",
+      "width": 80,
+      "height": 80,
+      "format": "PSR1-64",
+      "bytes": 3778,
+      "sha256": "742307dc1826893f7ad0bca6a147b76bcc4686c71e7707347e3c21413b56d60f"
+    },
+    {
+      "id": "walk_left",
+      "width": 40,
+      "height": 40,
+      "format": "PSR1-64",
+      "bytes": 1347,
+      "sha256": "d25addd4c452b4146cdc44ea560d234cf0e232a79b37f35aa3a78514c2499f47"
+    },
+    {
+      "id": "walk_right",
+      "width": 40,
+      "height": 40,
+      "format": "PSR1-64",
+      "bytes": 1342,
+      "sha256": "520f629f8b50ff360b60be5a19fd25fc4acbca5d48da1b284cb0eb6718ff806b"
+    },
+    {
+      "id": "dodge_luggage",
+      "width": 48,
+      "height": 64,
+      "format": "PSR1-64",
+      "bytes": 2531,
+      "sha256": "2f8acda838f6b04b0971fdaadb109b161441ff55992ba9e4e9abaefb39c6446c"
+    },
+    {
+      "id": "dodge_robot",
+      "width": 48,
+      "height": 64,
+      "format": "PSR1-64",
+      "bytes": 2130,
+      "sha256": "099988b6998d209b4b37dd3d6c7998e0d9ea5b3c092cfa2bc54eb9bcb6750057"
+    },
+    {
+      "id": "dodge_plant",
+      "width": 48,
+      "height": 64,
+      "format": "PSR1-64",
+      "bytes": 2448,
+      "sha256": "033abcf53e966ebebd387d8552f067ee2be6cbff3567adb3fbc0d258a6823b73"
+    },
+    {
+      "id": "dodge_books",
+      "width": 48,
+      "height": 64,
+      "format": "PSR1-64",
+      "bytes": 2255,
+      "sha256": "c40872c5cef882fb73ed37d33c4aaa2e5680aaa27fb51f2cf1fff17dd54610c8"
+    }
+  ],
+  "avatars": [
+    {
+      "id": "avatar-01",
+      "width": 96,
+      "height": 156,
+      "bytes": 14980,
+      "sha256": "665dd1e49c22612d4439bc41cc57080bb4a6c16d916764b171ac2c1e70be6dd3"
+    },
+    {
+      "id": "avatar-02",
+      "width": 96,
+      "height": 156,
+      "bytes": 14797,
+      "sha256": "d55d827f6dd61bbeadf062e4f018f9c45a8a54d0db0a51315887136be0b502df"
+    },
+    {
+      "id": "avatar-03",
+      "width": 96,
+      "height": 156,
+      "bytes": 17530,
+      "sha256": "6214a4b3a88473bc71ce2e551ad3022ba84399c652031c357f891d76061535bf"
+    },
+    {
+      "id": "avatar-04",
+      "width": 96,
+      "height": 156,
+      "bytes": 17009,
+      "sha256": "039ca0a792a03d89b47112b411d9a1ccb4250b14d5ad6fa00e6e9f9be7491e0a"
+    },
+    {
+      "id": "avatar-05",
+      "width": 96,
+      "height": 156,
+      "bytes": 15057,
+      "sha256": "39c1f58aa5be497ee0f71d7f1c8c5405c29d29d94f23bf7e0eb5a78f6f89a2cc"
+    },
+    {
+      "id": "avatar-06",
+      "width": 96,
+      "height": 156,
+      "bytes": 16485,
+      "sha256": "25412f587c5885fb9e1f44886bef66fc00ac823e40e5fd1419119e806e37ebda"
+    },
+    {
+      "id": "avatar-07",
+      "width": 96,
+      "height": 156,
+      "bytes": 16810,
+      "sha256": "e46d73743028c32f0db6575c74ce067c2180074e123d367d3881e9cabc167b26"
+    },
+    {
+      "id": "avatar-08",
+      "width": 96,
+      "height": 156,
+      "bytes": 16364,
+      "sha256": "e278a0f5f8947679a391884db74a9ae7149258b6691cefd2ae0e8440061a7803"
+    }
+  ],
+  "sprite_flash_bytes": 15831
+}

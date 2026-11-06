@@ -1,0 +1,194 @@
+[
+  {
+    "avatar": 0,
+    "frame": 0,
+    "file": "face-00-00.png",
+    "source": "source/girl-faces.png",
+    "crop": [
+      25,
+      58,
+      513,
+      503
+    ],
+    "native": [
+      144,
+      144
+    ]
+  },
+  {
+    "avatar": 0,
+    "frame": 1,
+    "file": "face-00-01.png",
+    "source": "source/girl-faces.png",
+    "crop": [
+      520,
+      57,
+      1011,
+      503
+    ],
+    "native": [
+      144,
+      144
+    ]
+  },
+  {
+    "avatar": 0,
+    "frame": 2,
+    "file": "face-00-02.png",
+    "source": "source/girl-faces.png",
+    "crop": [
+      1020,
+      57,
+      1512,
+      503
+    ],
+    "native": [
+      144,
+      144
+    ]
+  },
+  {
+    "avatar": 0,
+    "frame": 3,
+    "file": "face-00-03.png",
+    "source": "source/girl-faces.png",
+    "crop": [
+      25,
+      526,
+      514,
+      972
+    ],
+    "native": [
+      144,
+      144
+    ]
+  },
+  {
+    "avatar": 0,
+    "frame": 4,
+    "file": "face-00-04.png",
+    "source": "source/girl-faces.png",
+    "crop": [
+      520,
+      527,
+      1011,
+      973
+    ],
+    "native": [
+      144,
+      144
+    ]
+  },
+  {
+    "avatar": 0,
+    "frame": 5,
+    "file": "face-00-05.png",
+    "source": "source/girl-faces.png",
+    "crop": [
+      1020,
+      526,
+      1512,
+      973
+    ],
+    "native": [
+      144,
+      144
+    ]
+  },
+  {
+    "avatar": 1,
+    "frame": 0,
+    "file": "face-01-00.png",
+    "source": "source/boy-faces.png",
+    "crop": [
+      13,
+      34,
+      508,
+      505
+    ],
+    "native": [
+      144,
+      144
+    ]
+  },
+  {
+    "avatar": 1,
+    "frame": 1,
+    "file": "face-01-01.png",
+    "source": "source/boy-faces.png",
+    "crop": [
+      525,
+      34,
+      1020,
+      505
+    ],
+    "native": [
+      144,
+      144
+    ]
+  },
+  {
+    "avatar": 1,
+    "frame": 2,
+    "file": "face-01-02.png",
+    "source": "source/boy-faces.png",
+    "crop": [
+      1037,
+      34,
+      1532,
+      505
+    ],
+    "native": [
+      144,
+      144
+    ]
+  },
+  {
+    "avatar": 1,
+    "frame": 3,
+    "file": "face-01-03.png",
+    "source": "source/boy-faces.png",
+    "crop": [
+      13,
+      528,
+      508,
+      996
+    ],
+    "native": [
+      144,
+      144
+    ]
+  },
+  {
+    "avatar": 1,
+    "frame": 4,
+    "file": "face-01-04.png",
+    "source": "source/boy-faces.png",
+    "crop": [
+      525,
+      528,
+      1020,
+      996
+    ],
+    "native": [
+      144,
+      144
+    ]
+  },
+  {
+    "avatar": 1,
+    "frame": 5,
+    "file": "face-01-05.png",
+    "source": "source/boy-faces.png",
+    "crop": [
+      1037,
+      528,
+      1532,
+      996
+    ],
+    "native": [
+      144,
+      144
+    ]
+  }
+]

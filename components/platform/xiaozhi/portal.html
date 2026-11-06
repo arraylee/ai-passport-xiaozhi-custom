@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,interactive-widget=resizes-content">
+<title>AI PASSPORT 连接网络</title>
+<style>
+*{box-sizing:border-box}[hidden]{display:none!important}html{color-scheme:dark}
+body{max-width:440px;margin:28px auto;padding:0 20px;background:#0e1512;color:#f3efe3;font:18px/1.6 system-ui}
+h1{font-size:27px;line-height:1.4}h2{font-size:23px;margin:0 0 8px}p{color:#c9d4cb}label{display:block;font-weight:600}
+fieldset{min-width:0;margin:22px 0 0;padding:0;border:0}legend{padding:0;font-weight:600}
+input,button{font:inherit;width:100%;min-height:48px;margin:8px 0;padding:12px;border-radius:12px;border:1px solid #637660}
+input{background:#0e1512;color:#f3efe3;font-size:18px}button{background:#bad58c;color:#0e1512;font-weight:600;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visible{outline:3px solid #f3efe3;outline-offset:2px}
+.secondary{background:transparent;color:#d5e3d1;font-weight:500}
+#choices{display:grid;gap:10px;margin:10px 0}.network{display:flex;align-items:center;gap:12px;text-align:left;margin:0;padding:12px;border:2px solid #637660;background:#18231d;color:#f3efe3}
+.network.selected{border-color:#bad58c;background:#263722}.network::before{content:'';flex:0 0 22px;height:22px;border:2px solid #a9b9ad;border-radius:50%}.network.selected::before{border-color:#bad58c;background:#bad58c;box-shadow:inset 0 0 0 4px #18231d}
+.network-copy{min-width:0}.network-name{display:block;font-size:19px;font-weight:650;overflow-wrap:anywhere}.network-note{display:block;color:#c9d4cb;font-size:16px;font-weight:400}
+small{display:block;color:#a9b9ad;font-size:15px}#r{min-height:30px;color:#d8eab9}
+dialog{position:fixed;inset:auto;margin:0;top:var(--view-top,0px);left:0;width:100%;max-width:none;height:var(--view-height,100dvh);max-height:none;border:0;padding:12px;background:transparent;color:#f3efe3;overflow:hidden}
+dialog[open]{display:flex;align-items:center;justify-content:center}dialog::backdrop{background:#000b}
+.sheet{width:100%;max-width:416px;max-height:100%;overflow-y:auto;overscroll-behavior:contain;padding:22px;border:1px solid #637660;border-radius:18px;background:#18231d;box-shadow:0 16px 50px #0008}
+#ssid{margin:0 0 18px;color:#f3efe3;font-weight:650;overflow-wrap:anywhere;max-height:90px;overflow-y:auto}#hint{margin:12px 0;font-size:16px}#status{margin:12px 0;overflow-wrap:anywhere;color:#d8eab9;font-size:16px}#cancel{margin-bottom:0}
+@media(max-height:520px){dialog[open]{align-items:flex-start}.sheet{padding:16px}h2{font-size:21px}#ssid{max-height:52px;margin-bottom:10px}#hint{display:none}#status{margin:8px 0}}
+</style>
+<h1>让 AI PASSPORT 连上网络</h1>
+<p>选择下面的 2.4G Wi-Fi，即可输入密码。</p>
+<fieldset id="networks" aria-describedby="r" disabled><legend>Wi-Fi 网络</legend><div id="choices" aria-busy="true"></div></fieldset>
+<button id="scan" class="secondary" type="button">重新扫描</button>
+<button id="resume" type="button" hidden>查看所选网络</button>
+<p id="r" role="status" aria-live="polite"></p>
+<small>密码只保存在这台设备上。连接成功后，请查看设备屏幕，完成小智绑定和智能体设置。</small>
+<dialog id="prompt" aria-labelledby="title" aria-describedby="ssid hint">
+<div class="sheet">
+<h2 id="title">连接 Wi-Fi</h2><p id="ssid"></p>
+<form id="f" novalidate>
+<label id="pw" for="p">Wi-Fi 密码<input id="p" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="请输入 Wi-Fi 密码"></label>
+<p id="hint"></p>
+<button id="connect" type="submit">连接网络</button>
+</form>
+<p id="status" role="status" aria-live="polite"></p>
+<button id="check" class="secondary" type="button" hidden>检查连接结果</button>
+<button id="cancel" class="secondary" type="button">返回网络列表</button>
+</div></dialog>
+<script>
+const form=document.getElementById('f'),networkField=document.getElementById('networks'),networkList=document.getElementById('choices'),password=document.getElementById('p'),passwordField=document.getElementById('pw'),scan=document.getElementById('scan'),connect=document.getElementById('connect'),result=document.getElementById('r'),prompt=document.getElementById('prompt'),ssid=document.getElementById('ssid'),hint=document.getElementById('hint'),status=document.getElementById('status'),cancel=document.getElementById('cancel'),resume=document.getElementById('resume'),check=document.getElementById('check');
+let networks=[],networkChoices=[],selectedId='',scanning=false,attempt=false,connected=false,uncertain=false,generation=0,pollTimer,failures=0,started=0;
+function message(text){result.textContent=text;status.textContent=text;}
+function selected(){return networks.find(n=>n.id===selectedId);}
+function selection(){
+ const n=selected(),locked=scanning||attempt||connected;
+ for(const choice of networkChoices){const on=choice.id===selectedId;choice.button.classList.toggle('selected',on);choice.button.setAttribute('aria-pressed',String(on));choice.button.disabled=locked;}
+ passwordField.hidden=!n||!n.secure;password.disabled=locked||!n||!n.secure;password.required=!!n&&n.secure;
+ networkField.disabled=locked||!networks.length;networkList.setAttribute('aria-busy',String(scanning));scan.disabled=locked;connect.disabled=locked||!n;
+ resume.hidden=!n||prompt.open;check.hidden=!uncertain;check.disabled=false;
+}
+function openPrompt(){
+ const n=selected();if(!n)return;ssid.textContent=n.ssid;hint.textContent=n.secure?'请输入路由器的 Wi-Fi 密码。':'此网络无需密码，点“连接网络”即可。';
+ if(!prompt.open)prompt.showModal();selection();if(n.secure&&!password.disabled)password.focus();else if(!connect.disabled)connect.focus();else cancel.focus();
+}
+prompt.onclose=selection;cancel.onclick=()=>prompt.close();resume.onclick=openPrompt;
+function showNetworks(){
+ networkList.replaceChildren();networkChoices=[];
+ for(const n of networks){
+  const button=document.createElement('button'),copy=document.createElement('span'),name=document.createElement('span'),note=document.createElement('span');
+  button.type='button';button.className='network';button.setAttribute('aria-haspopup','dialog');copy.className='network-copy';name.className='network-name';name.textContent=n.ssid;note.className='network-note';note.textContent=n.secure?'需要密码':'无需密码';
+  button.onclick=()=>{if(scanning||attempt||connected)return;if(selectedId!==n.id)password.value='';selectedId=n.id;message('');openPrompt();};
+  copy.append(name,note);button.append(copy);networkList.append(button);networkChoices.push({button,id:n.id});
+ }
+ selection();
+}
+async function request(url,options={}){
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),8000);
+ try{return await fetch(url,{...options,cache:'no-store',signal:controller.signal});}finally{clearTimeout(timeout);}
+}
+async function refresh(){
+ if(scanning||attempt||connected)return;scanning=true;const token=++generation;selection();message('正在扫描附近的 2.4G Wi-Fi…');
+ try{
+  const response=await request('/networks');if(!response.ok)throw Error('scan');const data=await response.json();if(token!==generation)return;
+  if(!Array.isArray(data.networks))throw Error('networks');networks=data.networks.filter(n=>n&&typeof n.id==='string'&&typeof n.ssid==='string'&&typeof n.secure==='boolean');
+  if(!selected()){selectedId='';password.value='';}showNetworks();message(networks.length?'请点选一个 Wi-Fi 网络。':'未找到 2.4G Wi-Fi，请靠近路由器后重新扫描。');
+ }catch(e){if(token===generation)message('扫描失败，请确认手机仍连接设备热点，再点“重新扫描”。');}
+ finally{if(token===generation){scanning=false;selection();}}
+}
+function unknownResult(){uncertain=true;message('连接结果尚未确认。设备热点可能已关闭，请查看设备屏幕；若仍需配网，重新连接设备热点后检查连接结果。');selection();}
+function finishFailure(error){
+ attempt=false;uncertain=false;
+ const errors={auth:'连接失败，请检查 Wi-Fi 密码后重试。',not_found:'未找到所选 Wi-Fi，请靠近路由器后重试。',timeout:'连接超时，请确认路由器可用后重试。',save_failed:'网络信息未能保存，请重试。',unknown:'连接未成功，请检查网络和密码后重试。'};
+ message(errors[error]||errors.unknown);selection();
+}
+async function poll(token){
+ if(token!==generation||!attempt)return;check.disabled=true;
+ try{
+  const response=await request('/wifi/status');if(!response.ok)throw Error('status');const data=await response.json();if(token!==generation)return;
+  if(!['idle','connecting','connected','failed'].includes(data.state))throw Error('state');failures=0;
+  if(data.state==='connected'){attempt=false;connected=true;uncertain=false;message('Wi-Fi 已连接并保存。请查看设备屏幕，完成小智绑定和智能体设置。');selection();return;}
+  if(data.state==='failed'){finishFailure(data.error);return;}
+  if(data.state==='idle'){attempt=false;uncertain=false;message('设备当前没有进行连接，请点“连接网络”重试。');selection();return;}
+  uncertain=false;message('设备正在连接 Wi-Fi，请稍候…');
+ }catch(e){if(token!==generation)return;if(++failures>=3){unknownResult();return;}message('正在确认连接结果，请保持连接设备热点…');}
+ if(Date.now()-started>=60000){unknownResult();return;}
+ selection();pollTimer=setTimeout(()=>poll(token),1000);
+}
+check.onclick=()=>{clearTimeout(pollTimer);failures=0;started=Date.now();return poll(generation);};scan.onclick=refresh;
+form.onsubmit=async(e)=>{
+ e.preventDefault();if(scanning||attempt||connected)return;const n=selected();if(!n)return;
+ const value=n.secure?password.value:'',length=new TextEncoder().encode(value).length;
+ if(n.secure&&(length<8||length>63)){message('密码需要 8–63 字节，请检查后重试。');password.focus();return;}
+ attempt=true;uncertain=false;failures=0;started=Date.now();const token=++generation;clearTimeout(pollTimer);selection();message('正在提交连接请求…');
+ try{
+  const response=await request('/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid_hex:n.id,password:value})});if(token!==generation)return;
+  if(response.status===400){attempt=false;message('网络或密码格式无效，请检查后重试。');selection();return;}
+  if(response.status!==202&&response.status!==409){unknownResult();return;}
+ }catch(e){if(token!==generation)return;}
+ // A lost POST response can still mean the device accepted the request. Ask for actual state.
+ return poll(token);
+};
+function viewport(){const v=window.visualViewport;if(!v)return;prompt.style.setProperty('--view-top',v.offsetTop+'px');prompt.style.setProperty('--view-height',v.height+'px');}
+if(window.visualViewport){window.visualViewport.addEventListener('resize',viewport);window.visualViewport.addEventListener('scroll',viewport);}window.addEventListener('resize',viewport);viewport();
+refresh();
+</script></html>

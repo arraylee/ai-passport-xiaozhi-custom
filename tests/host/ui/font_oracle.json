@@ -1,0 +1,9 @@
+{
+  "source_sha256": "d4bdeb38a39151d74d084cba5090f8cb7d20bf83eedb78c35939ae70b9f4e3f6",
+  "converter": "lv_font_conv@1.5.3 --no-compress --bpp 4 --no-kerning",
+  "counts": {
+    "16": 7035,
+    "20": 7035
+  },
+  "sha256": "c27d8363776ff483529500050b197df3490e5242b9c5f1b74fc0459deeb8a236"
+}

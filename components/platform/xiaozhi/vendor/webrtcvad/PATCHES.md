@@ -1,0 +1,1 @@
+Local portability patch: rtc_base/system/arch.h recognizes RV32 little-endian for ESP32-C3. It selects the portable C path, adds no architecture-specific assembly, and leaves all VAD algorithm source unchanged. UPSTREAM.json hashes identify the unmodified originals.

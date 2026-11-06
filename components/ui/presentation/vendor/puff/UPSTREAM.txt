@@ -1,0 +1,15 @@
+Upstream: Mark Adler puff2.3, included in official madler/zlib v1.3.1.
+Repository: https://github.com/madler/zlib
+Tag object: 925af44f3cde53c6b076611c297850091b5dc7bb
+Peeled commit: 51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf
+Files downloaded over certificate-verified HTTPS from:
+https://raw.githubusercontent.com/madler/zlib/51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf/contrib/puff/puff.c
+https://raw.githubusercontent.com/madler/zlib/51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf/contrib/puff/puff.h
+Original SHA256 puff.c: 5b9d75aeb5baf3575415bc6ade3f2a02e50b6b971b3f8b4fda2b03543bc6e52f
+Original SHA256 puff.h: 969b7be2a930db0cdcb19b0e5b29ae6741f5a8f663b6dba6d647e12ec60cfa8e
+Local alteration: fixed() uses per-call stack-local Huffman tables instead of
+mutable permanent static arrays and first-call initialization. Decode logic
+and license notice remain unchanged. fixed/dynamic table builders are marked
+noinline on GCC/Clang so their mutually exclusive arrays keep separate bounded
+stack frames on ESP32-C3. Both alterations are explicitly marked in puff.c.
+License: full upstream notice in puff.h and assets/licenses/PUFF-LICENSE.txt.

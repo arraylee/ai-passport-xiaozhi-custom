@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "scope": "font software and derived glyph data only",
+  "sources": [
+    {
+      "file": "assets/fonts/LXGWWenKai-Medium.ttf",
+      "source_family": "LXGW WenKai Medium",
+      "version": "1.522",
+      "derived_family": "Passport UI / Passport Body Fallback / Passport Nickname",
+      "bytes": 25379848,
+      "sha256": "d4bdeb38a39151d74d084cba5090f8cb7d20bf83eedb78c35939ae70b9f4e3f6"
+    },
+    {
+      "file": "managed_components/lvgl__lvgl/scripts/built_in_font/Montserrat-Medium.ttf",
+      "source_family": "Montserrat Medium",
+      "version": "7.200",
+      "derived_family": "Passport Symbols and Latin",
+      "bytes": 243180,
+      "sha256": "421f26b23e2be6b98373d32acd3cb2897b154d4bf0a77d26534ce476e4cbed53"
+    },
+    {
+      "file": "managed_components/lvgl__lvgl/scripts/built_in_font/FontAwesome5-Solid+Brands+Regular.woff",
+      "source_family": "Font Awesome 5 Free Solid",
+      "version": "5.9.0",
+      "derived_family": "Passport Symbols and Latin",
+      "bytes": 353228,
+      "sha256": "f4e42f6cd69e5dbdcccc0f2f5be136cebde0e427641e45403bf9173a92da95f4"
+    }
+  ],
+  "licenses": [
+    {
+      "file": "LXGW-v1.522-OFL.txt",
+      "bytes": 4448,
+      "sha256": "c38b1994a5e48ac30ac7d1da7d0409fd8fd8127dfe28a13d6e787d5b1ef34a5e"
+    },
+    {
+      "file": "LXGW-OFL.txt",
+      "bytes": 5171,
+      "sha256": "1a25e35da1031c6c3436fde545bb9cb5aca954e9873afe510c834b8b79bd21a0"
+    },
+    {
+      "file": "Montserrat-OFL.txt",
+      "bytes": 4392,
+      "sha256": "41f82bb4d24b304f30f7136bc47abdd083782e4265c984160f5649d1e78ea49c"
+    },
+    {
+      "file": "FontAwesome5-LICENSE.txt",
+      "bytes": 7427,
+      "sha256": "de784a808496d49f5f80dd9d1d6e9a51cff712cfbc339e7c25155631ae3cdb5d"
+    }
+  ],
+  "embedded_notice": {
+    "file": "FONT-LICENSES.txt",
+    "bytes": 23135,
+    "sha256": "a32d1a8f783436f267c7808f94b43c44eb2bd3eb8fe2a7a9a277e2ad13e32c88"
+  }
+}

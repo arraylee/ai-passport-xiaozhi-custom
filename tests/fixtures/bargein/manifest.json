@@ -1,0 +1,20 @@
+{
+  "source": "Local macOS synthetic TTS, no actual microphone or personal speech recording",
+  "format": "mono8000Hz signed16 little-endian",
+  "far_voice": "Eddy zh-CN",
+  "near_voice": "Tingting",
+  "fixtures": [
+    {
+      "file": "far-8k.pcm",
+      "bytes": 253888,
+      "seconds": 15.868,
+      "sha256": "b537f61d79d26e4bea819ef2f667d7eeec1dd9f4bb5a9e0f3f64886727f625f4"
+    },
+    {
+      "file": "near-8k.pcm",
+      "bytes": 102808,
+      "seconds": 6.4255,
+      "sha256": "10ea16b49fd5ccc6642ed021af1bc5a5d938f2a456ae072c747265f000f9668b"
+    }
+  ]
+}

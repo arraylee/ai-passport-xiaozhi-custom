@@ -1,0 +1,29 @@
+/* Original user-authored Answer Book corpus; source: assets/source/answers.txt. */
+#include "services/answer_content.h"
+const char *const answer_texts[] = {
+    "相信你的直觉",
+    "再等一等",
+    "会有转机",
+    "顺其自然",
+    "现在还不是时候",
+    "大胆一点",
+    "别急着下结论",
+    "答案就在你心里",
+    "试试看",
+    "保持耐心",
+    "换个角度",
+    "不要回头",
+    "值得等待",
+    "事情会变得明朗",
+    "听从内心的声音",
+    "先迈出第一步",
+    "时机已经成熟",
+    "暂时放下它",
+    "你已经知道答案",
+    "一切自有安排",
+    "不必怀疑",
+    "很快就会有结果",
+    "接受这个变化",
+    "相信正在发生的一切",
+};
+const size_t answer_text_count = sizeof(answer_texts) / sizeof(answer_texts[0]);

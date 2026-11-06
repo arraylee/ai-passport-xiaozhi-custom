@@ -1,0 +1,23 @@
+:root { font-family: Inter, system-ui, sans-serif; color: #eef2ff; background: #090b14; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 80% 0, #29204a, transparent 34rem), #090b14; }
+main { width: min(900px, calc(100% - 32px)); margin: 42px auto; }
+header span { color: #ff5ba7; font-size: 12px; letter-spacing: .28em; font-weight: 800; }
+h1 { margin: 8px 0; font-size: clamp(30px, 5vw, 48px); }
+header p { color: #aeb6d0; margin-bottom: 28px; }
+.panel { margin: 14px 0; padding: 22px; border: 1px solid #303750; border-radius: 18px; background: #111522d9; box-shadow: 0 16px 50px #0005; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+label { display: grid; gap: 8px; color: #b9c1d9; font-size: 13px; }
+input { width: 100%; padding: 12px 14px; border: 1px solid #3c4562; border-radius: 10px; color: white; background: #090d18; outline: none; }
+input:focus { border-color: #ff5ba7; box-shadow: 0 0 0 3px #ff5ba722; }
+.device { display: grid; grid-template-columns: 1fr 1fr auto; gap: 20px; align-items: center; }
+.device div { display: grid; gap: 5px; }.device small { color: #7f8ba9; }.device strong { font-family: ui-monospace, monospace; }
+button { border: 0; border-radius: 11px; padding: 12px 18px; font-weight: 750; color: #17101b; background: #d9def0; cursor: pointer; }
+button.primary { width: 100%; margin: 18px 0 14px; padding: 15px; color: white; background: linear-gradient(90deg, #ff4f9a, #8c5cff); }
+button:disabled { cursor: not-allowed; opacity: .42; }
+.warning { color: #ffd080; font-size: 13px; line-height: 1.6; }
+progress { width: 100%; accent-color: #ff5ba7; }
+#status { margin-top: 10px; color: #aeb6d0; font-size: 13px; }.error { color: #ff7f91 !important; }
+.terminal { padding: 0; overflow: hidden; }.terminal-title { padding: 12px 16px; border-bottom: 1px solid #303750; color: #8290b2; font-size: 12px; }
+pre { height: 220px; margin: 0; padding: 16px; overflow: auto; color: #9fffc7; background: #070a11; font: 12px/1.6 ui-monospace, monospace; white-space: pre-wrap; }
+@media (max-width: 680px) { .grid, .device { grid-template-columns: 1fr; } main { margin-top: 24px; } }

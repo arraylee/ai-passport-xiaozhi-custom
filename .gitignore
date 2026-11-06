@@ -1,0 +1,50 @@
+# ===== 机密:产线身份台账,含明文 Key(密钥材料)。绝不入库 =====
+# 文件本身在磁盘上以 0600 保存;这里再挡一道,防止误 add。
+cardid_ledger.csv
+*.ledger.csv
+# 产线可能生成的分区镜像/密钥文件(含 Key)
+*cardid*.bin
+*.key
+
+# ===== ESP-IDF 构建产物 =====
+build/
+build-*/
+# 由 dependencies.lock + idf_component.yml 还原(idf.py reconfigure),不入库(224M)
+managed_components/
+
+# ===== sdkconfig:提交 sdkconfig 本体锁定当前配置,只忽略瞬时副本 =====
+sdkconfig.old
+sdkconfig.bak
+
+# ===== 编辑器/工具本地目录 =====
+.superpowers/
+*.pyc
+__pycache__/
+
+# ===== 系统杂项 =====
+.DS_Store
+Thumbs.db
+
+# 固件发布产物(由 scripts/release.py 生成,不入库)
+releases/
+
+.vscode/
+factory_test_log.csv
+tools/token_seq_state.json
+dist/
+tools/__pycache__/
+
+# Local native previews and verified candidate bundles
+/output/
+
+# Local credentials, diagnostics and package-manager caches
+.env
+.env.*
+!.env.example
+*.pem
+*.log
+node_modules/
+
+# Historical local implementation plans contain workstation-specific paths.
+doc/plans/
+docs/superpowers/plans/

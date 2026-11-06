@@ -1,0 +1,82 @@
+{
+  "bytes": 16063,
+  "capacity": 1048576,
+  "count": 7,
+  "format": "PTP1",
+  "offset": 5242880,
+  "sha256": "831ea05cbde18614a6f748fd2f4926fcda772b3a3af0559b48b3ffb0c56a7d36",
+  "sprite_bytes": 15831,
+  "sprites": [
+    {
+      "asset_id": 361052547,
+      "bytes": 2255,
+      "crc32": 3150673279,
+      "height": 64,
+      "offset": 232,
+      "sha256": "c40872c5cef882fb73ed37d33c4aaa2e5680aaa27fb51f2cf1fff17dd54610c8",
+      "symbol": "dodge_art_books",
+      "width": 48
+    },
+    {
+      "asset_id": 1097816911,
+      "bytes": 1347,
+      "crc32": 4192942413,
+      "height": 40,
+      "offset": 2487,
+      "sha256": "d25addd4c452b4146cdc44ea560d234cf0e232a79b37f35aa3a78514c2499f47",
+      "symbol": "bobo_art_walk_left",
+      "width": 40
+    },
+    {
+      "asset_id": 1874912745,
+      "bytes": 3778,
+      "crc32": 1169451126,
+      "height": 80,
+      "offset": 3834,
+      "sha256": "742307dc1826893f7ad0bca6a147b76bcc4686c71e7707347e3c21413b56d60f",
+      "symbol": "bobo_art_wave",
+      "width": 80
+    },
+    {
+      "asset_id": 2020619805,
+      "bytes": 2531,
+      "crc32": 3684115866,
+      "height": 64,
+      "offset": 7612,
+      "sha256": "2f8acda838f6b04b0971fdaadb109b161441ff55992ba9e4e9abaefb39c6446c",
+      "symbol": "dodge_art_luggage",
+      "width": 48
+    },
+    {
+      "asset_id": 2145030045,
+      "bytes": 2130,
+      "crc32": 145525249,
+      "height": 64,
+      "offset": 10143,
+      "sha256": "099988b6998d209b4b37dd3d6c7998e0d9ea5b3c092cfa2bc54eb9bcb6750057",
+      "symbol": "dodge_art_robot",
+      "width": 48
+    },
+    {
+      "asset_id": 2494179264,
+      "bytes": 1342,
+      "crc32": 1708148410,
+      "height": 40,
+      "offset": 12273,
+      "sha256": "520f629f8b50ff360b60be5a19fd25fc4acbca5d48da1b284cb0eb6718ff806b",
+      "symbol": "bobo_art_walk_right",
+      "width": 40
+    },
+    {
+      "asset_id": 3753565004,
+      "bytes": 2448,
+      "crc32": 4048203273,
+      "height": 64,
+      "offset": 13615,
+      "sha256": "033abcf53e966ebebd387d8552f067ee2be6cbff3567adb3fbc0d258a6823b73",
+      "symbol": "dodge_art_plant",
+      "width": 48
+    }
+  ],
+  "version": 1
+}

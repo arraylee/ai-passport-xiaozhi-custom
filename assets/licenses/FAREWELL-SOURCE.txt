@@ -1,0 +1,25 @@
+内置中文告别语的内容为“拜拜”。
+语音由 MyShell.ai 的 MeloTTS Chinese 模型在开发电脑上合成，通过 sherpa-onnx 2.0.1 运行。设备从 Flash 分段读取 16 kHz 单声道 IMA-ADPCM。
+原模型 https://huggingface.co/myshell-ai/MeloTTS-Chinese
+ONNX 转换包 https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-melo-tts-zh_en.tar.bz2
+压缩语音 5814 字节，SHA-256 e4346c0b32c0b16e1a699574aff92382dfaeed16d98f7a512268d9d9a1de249d。
+
+Copyright (c) 2024 MyShell.ai
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

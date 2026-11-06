@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Trae Card 网页量产烧录</title>
+  </head>
+  <body>
+    <main>
+      <header><span>TRAE WORK</span><h1>网页量产烧录</h1><p>身份数据仅在当前浏览器中生成，不上传服务器。</p></header>
+      <section class="panel grid">
+        <label>正式 release ZIP<input id="release" type="file" accept=".zip" /></label>
+        <label>Key / DeviceSecret<input id="key" maxlength="64" autocomplete="off" placeholder="必须手动输入" /></label>
+        <label>ProductKey<input id="pk" value="folotoy" readonly /></label>
+        <label>硬件版本<input id="hw" value="v1.0.0" readonly /></label>
+      </section>
+      <section class="panel device">
+        <div><small>设备</small><strong id="device">未连接</strong></div>
+        <div><small>SN / MAC</small><strong id="sn">------------</strong></div>
+        <button id="connect">连接 ESP32-C3</button>
+      </section>
+      <section class="panel">
+        <div class="warning">烧录会覆盖 bootloader、分区表、应用、头像资源和本机 cardid，但不会整片擦除。</div>
+        <button id="flash" class="primary" disabled>生成身份并烧录</button>
+        <progress id="progress" max="100" value="0"></progress>
+        <div id="status">请先选择 release ZIP 并连接设备。</div>
+      </section>
+      <section class="panel terminal"><div class="terminal-title">烧录日志（不会输出密钥）</div><pre id="log"></pre></section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

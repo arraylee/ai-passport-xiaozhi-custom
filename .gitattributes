@@ -1,0 +1,15 @@
+# Generated glyph arrays and packed catalogs are reproducible; focus PR review
+# on the generators, manifests, UI, and runtime behavior.
+components/ui/presentation/src/lv_font_cn_*.c linguist-generated=true
+components/ui/presentation/src/ui_font_*.c linguist-generated=true whitespace=-blank-at-eof
+components/ui/presentation/src/bobo_art.c linguist-generated=true
+components/ui/presentation/src/font_notices.c linguist-generated=true
+assets/petart_catalog.json linguist-generated=true
+assets/pixel-assets.json linguist-generated=true
+assets/fonts/fallback-fonts.json linguist-generated=true
+assets/fonts/ui-fonts.json linguist-generated=true
+assets/bobo/*.png linguist-generated=true
+
+# Preserve the exact upstream license text, including original whitespace.
+assets/fonts/*-OFL.txt -whitespace
+assets/fonts/FONT-LICENSES.txt -whitespace

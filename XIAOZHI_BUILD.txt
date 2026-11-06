@@ -1,0 +1,99 @@
+AI PASSPORT 小智版 2.1.0-xiaozhi.10
+
+基线：默认固件 2.1.0-preview.45 的 798 文件快照。
+硬件和分区：ESP32-C3 / 8 MB；沿用默认固件的显示、音频、按键、电池与分区配置。
+
+使用 ESP-IDF v5.5.3，依赖版本见 dependencies.lock。
+初始化 ESP-IDF 环境后，在本目录执行：
+  idf.py build
+  python scripts/release.py
+  python tools/verify_release.py releases/<生成的ZIP> --build-dir build
+
+首次构建需要 ESP-IDF 自动获取锁定的 managed_components。
+源代码包不含 SDK、编译工具、下载缓存、设备凭据或设备备份。
+生成后的字体已经随源码提供；仅重生成字体时需要 Pillow 与 lv_font_conv@1.5.3。
+
+本版主要改动：
+1. board_config.h 中 PASSPORT_XIAOZHI_EDITION=1。冷启动、重启及深睡唤醒均通过
+   app_plays_open_xiaozhi 进入正常小智流程。保留按住确认键上电的原有自检入口。
+2. 不显示首页扫码页、不启动首页头像解码和开机曲；小智界面建好后才触发首帧亮屏。
+3. 右侧菜单：重新配网、调整音量、打断方式、智能体设置、返回。
+4. 返回回对话；对话页长按确认打开菜单。音量/打断方式保存失败留在编辑页供重试。
+5. 更新原生4bpp字库，常用子集补齐六个提示用字，去除备用字库中的重复字符。
+6. 结束语音后释放编解码器、麦克风、语音套接字与TLS客户端，保留无线连接与形象。
+   上下键按下时切换焦点，短按确认在松手时执行，长按后的松手不触发第二次操作。
+   常规会话结束和完整退出分别处理；配网、退出及关机仍执行完整清理。
+   voice,end / voice,resume 是本地串口诊断入口，调用与界面相同的会话控制操作。
+
+7. 麦克风连续 30 秒未检出人声或 ASR 表达直接告别意图时，先关闭云端语音输入，再播放随固件提供的“拜拜”，最后进入在线待机。
+   聆听时的 16 kHz WebRTC VAD 复用原有 2,880 字节 PCM 缓冲区的尾部。回复播放时间不计入，云端自动续接保留已测得的静音。
+   告别短音频和来源分别位于 components/platform/xiaozhi/farewell_zh.adpcm 和 assets/licenses/FAREWELL-SOURCE.txt。
+
+8. 配网页按设备的休眠设置等待，默认为 10 分钟。手机扫描网络或提交配网会刷新整机空闲计时。
+   关闭自动休眠时可持续等待。从配网页休眠后按任一功能键返回配网，包括已保存旧网络时的“重新配网”。
+
+9. 开机第一屏显示当前虚拟形象。没有保存网络时，在“配置网络”按钮完成绘制后播放离线欢迎语。
+   按右侧最下方确定键可以打断播报并进入原配网页。已有网络自动连接，主动重新配网直接进入表单。
+10. 回复、引导及告别的嘴型读取 ES8311 扬声器通道已经发送的非静音 DMA 块。沿用原按键和自然打断两条音频路径。
+    参考 78/xiaozhi-esp32 主分支 a73e9a7e266e3196d1368ba46c30bee0d81f0a64 的音频输出分层和 MQTT 关闭逻辑。
+    对方已结束的会话不会再次回发 goodbye，其他会话的具名结束消息会被忽略。保留旧端未带会话 ID 的关闭格式。
+11. 首页与小智界面使用相同的 CW2017 实测电量条，有效电量只显示填充，未知电量显示灰色短线。
+
+12. 空回复结束后继续聆听。UDP 发送遇到临时缓冲不足时复用原数据包，最多重试两次，
+    总等待 20 毫秒。持续拥堵时丢弃当前实时帧，继续处理下一帧和结束操作。
+    永久套接字错误、数据长度或加密错误仍返回失败。重试不会重复加密或增加本帧序号。
+
+测试复现（设置 IDF_PATH，Python 安装 Pillow，PATH 可找到 node/cmake）：
+  python -m unittest discover -s tests/host -p 'test_*.py'
+  python -m unittest discover -s components/app/test -p 'test_*.py'
+  python -m unittest discover -s components/ui/presentation/test -p 'test_*.py'
+  python -m unittest discover -s tools -p 'test_*.py'
+  python tools/gen_ui_fonts.py --check
+  python tools/gen_cn_font.py --check
+  python tools/gen_font_oracle.py --check
+  python tools/gen_font_notices.py --check
+  cmake -S tests/host/echo -B build-host-echo
+  cmake --build build-host-echo
+  ctest --test-dir build-host-echo --output-on-failure
+  cmake -S tests/host/app_plays_input -B build-host-plays
+  cmake --build build-host-plays
+  ctest --test-dir build-host-plays --output-on-failure
+  cmake -S tests/host/ui -B build-native-ui -DPET_ART_REFERENCE_PYTHON=<含Pillow的Python路径>
+  cmake --build build-native-ui
+  ctest --test-dir build-native-ui --output-on-failure
+  npm ci --prefix tools/web_flasher
+  PASSPORT_RELEASE_ZIP=<本次ZIP的绝对路径> npm --prefix tools/web_flasher test
+  npm --prefix tools/web_flasher run build
+
+本版测试范围、镜像校验以及实机安装状态见本版随附测试记录。
+
+13. 开机引导改用用户 2026-11-06 提供的录音，保留原生 24 kHz / PCM16，
+    240 字节分块读取 Flash。原文件及再生成脚本见 assets/source/audio、tools/prepare_welcome_pcm.py。
+    去掉首尾极低电平静音，保留前 80 毫秒、后 100 毫秒余量；语音样本及音量不变。
+14. 小智界面采用深蓝黑底、暖杏焦点、卡片菜单和大音量刻度；圆角外保持黑色。
+    动画仍由实际声音驱动，焦点和对话更新保留对象，不增加全屏图片或动画任务。
+    大数字使用 Passport Volume Digits，仅含 0–9，来自随 SDK 提供的 Montserrat。
+    原字形及 SIL OFL 许可保留；tools/prepare_volume_digits.py --check 可核对生成结果。
+15. 校准 ES8311 音量曲线，修正默认补偿在 95/100 音量下产生的正增益，
+    最大 DAC 增益限制在 -4.5 dB；自然打断保留旧版约 -6.5 dB 的声学输出上限。
+    停止音频时先静音，再停时钟。主机验证不替代实机杂音听感验收。
+
+16. 已配置设备复用 NVS 内保存的 MQTT 连接参数，正常重开对话或重启不再请求绑定配置。
+    缓存上限 4096 字节，绑定设备身份并校验字段，只保存连接参数，不保存 UDP 会话密钥。
+    相同内容不重复写 Flash；连接失败时完整释放旧连接后最多刷新一次云端配置。
+    仅服务端返回有效激活码时进入绑定页，网络失败不会自行要求重新绑定；TLS 校验保留。
+17. 收到回复文字但没有任何音频写出时，TTS 结束后留 1.5 秒延迟容限，随后自动重建语音连接一次。
+    TTS 开始后一直没有音频且没有结束信号时，等待上限为 10 秒。真正没有文字的空回复仍继续聆听。
+    连续两次无声会话进入在线待机，保留 Wi-Fi 和形象，按“对话”可重试；成功播放会清零失败计数。
+    日志补充收发错误码与信号强度，不输出设备凭据或对话内容。
+18. 男生发声帧使用原生圆角几何补绘更明显的开口，停声闭嘴，女生保持原表情。
+    沿用 180 毫秒开合节奏及实际扬声器输出判定，无新位图、动画任务或常驻缓冲区。
+
+19. .10 将正文与标题的字符范围统一为 7,035 个字符，包含 GB2312 全部 6,763 个汉字、
+    已有姓名用字、标点和补充口语字。两种字号仍使用原生 4bpp 抗锯齿。
+    正文 BDF1 字形、度量和 Unicode 索引置于现有只读 petart 分区 +0x10000，
+    原有 7 张 PSR1 共享素材保持不变，分区布局不变。新增字库直接映射 Flash，
+    不占完整 RAM 缓存；标题按需解压仍只需最多 512 字节临时堆内存。
+    gen_font_oracle.py 生成独立未压缩字形的像素校验基准；font_mapped_all_glyphs
+    执行生产资源加载器与真正打包后的 C 字库，逐字核对两种字号的全部字符。
+    升级必须配套刷入本版 petart.bin、companion.bin 和应用，不能只更新应用 BIN。

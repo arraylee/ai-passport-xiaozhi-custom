@@ -1,0 +1,18 @@
+{
+  "source": "assets/source/audio/user-welcome.mp3",
+  "source_sha256": "020ab337b6a3e3f30f83b784d826b7ef32c1e6b644b68f7a1cd69c81bf9ffb68",
+  "format": "PCM-S16LE",
+  "sample_rate": 24000,
+  "channels": 1,
+  "original_samples": 134208,
+  "samples": 122520,
+  "bytes": 245040,
+  "seconds": 5.105,
+  "source_peak": 17667,
+  "retained_source_start": 6976,
+  "retained_source_end": 129395,
+  "silence_threshold": 32,
+  "added_silence_samples": 101,
+  "sha256": "595839699c9336ea55973e46b8bd95db0d2cafad459fe538d98835ad61c49622",
+  "processing": "MP3 decode and trim quiet outer edges with 80/100 ms margins; no synthesis, time stretching, gain or further lossy encoding"
+}
