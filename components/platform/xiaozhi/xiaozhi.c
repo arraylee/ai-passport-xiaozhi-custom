@@ -1324,7 +1324,7 @@ unsigned xiaozhi_play_startup_sound(void) {
   extern const uint8_t startup_start[] asm("_binary_startup_magicbox_adpcm_start");
   extern const uint8_t startup_end[] asm("_binary_startup_magicbox_adpcm_end");
   size_t bytes = (size_t)(startup_end - startup_start);
-  if (bytes != 8960) return 0; // 17,920 samples; never block boot on a wrong asset.
+  if (bytes != 25251) return 0; // 50,502 samples; never block boot on a wrong asset.
   atomic_bool idle = false;
   return (unsigned)xz_play_prompt(&config, &idle, &idle, startup_start, bytes);
 }

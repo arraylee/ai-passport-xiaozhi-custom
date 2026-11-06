@@ -540,7 +540,7 @@ def write_release_artifacts(build_dir, archive_path, standalone_app_path,
         prompt = prompt_path.read_bytes()
         offset = payload[segments[2].file].find(prompt) if prompt else -1
         if name == "startup" and metadata.get("version", "").startswith("2.1.0-xiaozhi.") and int(metadata["version"].rsplit(".", 1)[1]) >= 11:
-            if offset < 0 or len(prompt) != 8960:
+            if offset < 0 or len(prompt) != 25251:
                 raise RuntimeError("开机音乐未正确嵌入应用，拒绝发布")
         if offset >= 0:
             payload[notice] = (ROOT / "assets/licenses" / notice).read_bytes()

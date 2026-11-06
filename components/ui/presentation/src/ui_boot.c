@@ -21,7 +21,7 @@ static void tick(lv_timer_t *timer) {
   int bounce = age >= 360 && age < 480 ? -2 : age >= 480 && age < 580 ? 1 : 0;
   for (unsigned i=0;i<4;i++) {
     int side = i % 2;
-    lv_obj_set_pos(B.parts[i],64+side*56+(side?distance:-distance),76+bounce);
+    lv_obj_set_pos(B.parts[i],70+side*50+(side?distance:-distance),82+bounce);
     lv_obj_set_style_image_opa(B.parts[i],ramp(age,0,200),0);
   }
   lv_obj_set_style_text_opa(B.name,ramp(age,320,260),0);

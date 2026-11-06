@@ -88,7 +88,7 @@ int main(void) {
 #define PASSPORT_XIAOZHI_EDITION 1
 #define PERIPH_AUDIO 1
 #define AUDIO_MIC_PASSTHROUGH_TEST 0
-#define UI_BOOT_DURATION_MS 1600
+#define UI_BOOT_DURATION_MS 3400
 #define pdMS_TO_TICKS(x) (x)
 #define ESP_LOGI(...) ((void)samples)
 static bool s_button_guide_active,locked,shown=true,deny,draw=true,armed;
@@ -100,13 +100,13 @@ static bool ui_boot_open(void){assert(locked&&s_button_guide_active);return show
 static bool ui_boot_drawn(void){assert(locked);return draw&&ms>=60;}
 static void finish_wake_frame(void){assert(locked);armed=true;}
 static void vTaskDelay(unsigned n){assert(!locked);ms+=n;}
-static unsigned xiaozhi_play_startup_sound(void){assert(!locked&&s_button_guide_active);first_music=ms;music++;ms+=1120;return 17920;}
+static unsigned xiaozhi_play_startup_sound(void){assert(!locked&&s_button_guide_active);first_music=ms;music++;ms+=3157;return 50502;}
 """
         code+=function(source,'void show_startup_brand(')+r"""
 int main(void){
- show_startup_brand();assert(armed&&first_music==260&&music==1&&ms==1600&&!locked&&!s_button_guide_active);
- ms=0;draw=false;show_startup_brand();assert(first_music==700&&ms==1820&&music==2&&!locked&&!s_button_guide_active);
- ms=0;shown=false;show_startup_brand();assert(first_music==200&&ms==1320&&music==3&&!locked&&!s_button_guide_active);
+ show_startup_brand();assert(armed&&first_music==260&&music==1&&ms==3417&&!locked&&!s_button_guide_active);
+ ms=0;draw=false;show_startup_brand();assert(first_music==700&&ms==3857&&music==2&&!locked&&!s_button_guide_active);
+ ms=0;shown=false;show_startup_brand();assert(first_music==200&&ms==3357&&music==3&&!locked&&!s_button_guide_active);
  ms=0;deny=true;show_startup_brand();assert(!ms&&music==3&&!s_button_guide_active);
  return 0;
 }

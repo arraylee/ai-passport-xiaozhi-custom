@@ -98,9 +98,9 @@ AI PASSPORT 小智版 2.1.0-xiaozhi.11
     执行生产资源加载器与真正打包后的 C 字库，逐字核对两种字号的全部字符。
     升级必须配套刷入本版 petart.bin、companion.bin 和应用，不能只更新应用 BIN。
 
-20. .11 冷启动显示 1.6 秒 FoloToy 品牌动画及 MagicBox OGG_SUCCESS 原音频。
-    四个 A4 Flash 蒙版共 12,544 字节；单个 33 ms LVGL 定时器，在 900 ms 暂停并于进入小智时销毁。
-    音频复用已校准输出和分块解码路径，16 kHz / 17,920 样本；音频写入不占用 LVGL 锁。
+20. .11 冷启动显示 约 3.5 秒 FoloToy 品牌动画及产品固件 open.mp3 原音频。
+    四个 A4 Flash 蒙版共 10,000 字节；单个 33 ms LVGL 定时器，在 900 ms 暂停并于进入小智时销毁。
+    音频复用已校准输出和分块解码路径，16 kHz / 50,502 样本；音频写入不占用 LVGL 锁。
     开机资源及来源见 assets/source/boot 与 assets/licenses/BOOT-SOURCE.txt。
 21. XZ_STANDBY 不再刷新忙碌计时，默认空闲五分钟触发既有完整深睡流程。
     参考 FoloToy/folo-ai-passport-firmware-demo 的 39228a9 硬件休眠策略，
