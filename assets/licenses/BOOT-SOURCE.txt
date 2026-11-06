@@ -17,14 +17,15 @@ is attribution, not an additional license grant.
 Original input files: assets/source/boot/
 Reproduction: python tools/prepare_boot_assets.py
 Requires Pillow, numpy and av only when regenerating these assets.
-Output: 208x45 wordmark split into two Flash A4 masks (4,815 bytes);
+Output: 144x31 complete wordmark in one Flash A4 mask (2,232 bytes);
 16 kHz mono IMA ADPCM sound (25,251 bytes / 50,502 samples, 100 ms tail silence).
 Playback preserves original source level and uses calibrated device volume.
 No Nintendo graphics or sound are included; animation is implemented locally.
 
-Animation study for .13: Nintendo Switch trailer intro master
-SWITCH_VIMaster_TVCM_1280x720.mov, 50 frames at 30000/1001 fps,
-publicly mirrored in https://repo.mariocube.com/Marketing/Europe/Trailer%20Assets/Nintendo%20Switch.zip
-Studied the anticipation (~0.334 s), latch (~0.500 s), and shared settle
-(~0.734 s). Only locally implemented motion timing is used. No frame, graphic,
-or sound from this reference is bundled in the firmware or source archive.
+Animation study for .14: original Game Boy whole-wordmark vertical scrolling.
+Primary emulator/boot-ROM analysis and demonstration:
+https://www.chciken.com/tlmboy/2022/05/02/gameboy-boot.html
+https://www.chciken.com/assets/gameboy_boot/logo_scroll.webm
+The local implementation uses a 2.6-second constant-speed scroll and hold,
+adapted to the 240x320 display and unchanged FoloToy music. No Nintendo logo,
+ROM, video frame, or sound is included in the firmware or source archive.

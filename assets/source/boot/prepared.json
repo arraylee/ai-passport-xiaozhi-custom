@@ -7,10 +7,10 @@
   "encoded_sha256": "371746ec480327a1dc7af3c80be6757b6eefb532a9d01006695caf35f29c4b67",
   "pcm_sha256": "566381edec91d6121971a49c8c2303a5a36f934a6e7a962ee7738641185d1075",
   "snr_db": 28.68,
-  "logo_mask_bytes": 4815,
+  "logo_mask_bytes": 2232,
   "logo_size": [
-    208,
-    45
+    144,
+    31
   ],
   "logo_rgb": [
     242,

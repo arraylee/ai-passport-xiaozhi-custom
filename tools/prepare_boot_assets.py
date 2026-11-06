@@ -8,40 +8,17 @@ from adpcm_codec import encode,decode
 ROOT=Path(__file__).resolve().parents[1]
 SOURCE=ROOT/'assets/source/boot'
 def main():
- # Preserve the user's complete horizontal wordmark, alpha and aspect ratio.
- # Two cropped halves are Flash masks; no PNG decoder is used on the device.
+ # Keep the whole small wordmark in one Flash mask. The native renderer
+ # translates it over black; no PNG decoder or animation frame cache is used.
  im=Image.open(SOURCE/'folotoy-logo-pink.png').convert('RGBA')
- color=(242,0,111);width=208;height=round(width*im.height/im.width);split=114
+ color=(242,0,111);width=144;height=round(width*im.height/im.width)
  alpha=np.asarray(im.getchannel('A').resize((width,height),Image.Resampling.LANCZOS))
- values=np.rint(alpha.astype(float)/17).clip(0,15).astype('uint8')
- # The slanted T overlaps the last o's horizontal bounds. Split by whole
- # letters, so the falling Toy never leaves a sliced-off stroke behind.
- seen=np.zeros(values.shape,dtype=bool);letters=[]
- for y,x in np.argwhere(values):
-  if seen[y,x]:continue
-  pending=[(int(y),int(x))];seen[y,x]=True;points=[]
-  while pending:
-   yy,xx=pending.pop();points.append((yy,xx))
-   for dy,dx in ((-1,0),(1,0),(0,-1),(0,1),(-1,-1),(-1,1),(1,-1),(1,1)):
-    ny,nx=yy+dy,xx+dx
-    if 0<=ny<height and 0<=nx<width and values[ny,nx] and not seen[ny,nx]:
-     seen[ny,nx]=True;pending.append((ny,nx))
-  letters.append(points)
- letters.sort(key=lambda points:min(x for y,x in points))
- assert len(letters)==7,'Expected seven complete wordmark letters'
- planes=[np.zeros_like(values),np.zeros_like(values)]
- for index,points in enumerate(letters):
-  for y,x in points:planes[index>=4][y,x]=values[y,x]
- assert np.array_equal(planes[0]+planes[1],values)
- chunks=[f'#define BOOT_LOGO_WIDTH {width}\n#define BOOT_LOGO_HEIGHT {height}\n#define BOOT_LOGO_SPLIT {split}\n#define BOOT_LOGO_COLOR 0xF2006F\n'];descriptors=[];mask_bytes=0
- for side,(left,right) in enumerate(((0,120),(split,width))):
-  assert not planes[side][:,:left].any() and not planes[side][:,right:].any()
-  part=planes[side][:,left:right].reshape(-1)
-  raw=bytes((part[::2]<<4)|part[1::2]);name=f'boot_logo_{side}';mask_bytes+=len(raw)
-  chunks.append('static const uint8_t '+name+'[] = {\n'+ '\n'.join('  '+','.join(str(v) for v in raw[i:i+32])+',' for i in range(0,len(raw),32))+'\n};\n')
-  descriptors.append('{.header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_A4,.w='+str(right-left)+',.h='+str(height)+',.stride='+str((right-left)//2)+'},.data_size=sizeof '+name+',.data='+name+'}')
- chunks.append('static const lv_image_dsc_t boot_logo[2] = {\n'+',\n'.join(descriptors)+'\n};\n')
- (ROOT/'components/ui/presentation/src/boot_logo.inc').write_text('/* Generated from the user-provided FoloToy wordmark; two Flash A4 masks. */\n'+''.join(chunks))
+ values=np.rint(alpha.astype(float)/17).clip(0,15).astype('uint8').reshape(-1)
+ raw=bytes((values[::2]<<4)|values[1::2]);mask_bytes=len(raw)
+ header=f'#define BOOT_LOGO_WIDTH {width}\n#define BOOT_LOGO_HEIGHT {height}\n#define BOOT_LOGO_COLOR 0xF2006F\n'
+ pixels='static const uint8_t boot_logo_pixels[] = {\n'+'\n'.join('  '+','.join(str(v) for v in raw[i:i+32])+',' for i in range(0,len(raw),32))+'\n};\n'
+ descriptor='static const lv_image_dsc_t boot_logo = {.header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_A4,.w='+str(width)+',.h='+str(height)+',.stride='+str(width//2)+'},.data_size=sizeof boot_logo_pixels,.data=boot_logo_pixels};\n'
+ (ROOT/'components/ui/presentation/src/boot_logo.inc').write_text('/* Generated from the user-provided FoloToy wordmark; one Flash A4 mask. */\n'+header+pixels+descriptor)
  c=av.open(str(SOURCE/'magicbox-open.mp3'));res=av.AudioResampler(format='s16',layout='mono',rate=16000);blocks=[]
  for f in c.decode(audio=0):
   blocks += [v.to_ndarray().reshape(-1) for v in res.resample(f)]
