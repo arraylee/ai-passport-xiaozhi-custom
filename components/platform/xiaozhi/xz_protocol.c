@@ -35,19 +35,42 @@ bool xz_udp_valid(const uint8_t *p, size_t n, uint32_t prev, uint32_t *seq) {
     *seq = s;
   return true;
 }
-void xz_text_copy(char *out, size_t cap, const char *text) {
-  if (!out || !cap)
-    return;
-  if (!text)
-    text = "";
-  size_t n = strlen(text);
-  if (n >= cap) {
-    n = cap - 1;
-    while (n && ((unsigned char)text[n] & 0xc0) == 0x80)
-      --n;
+#include "xz_text_pairs.inc"
+static unsigned scalar(const unsigned char *p, unsigned *length) {
+  unsigned c=*p;*length=1;
+  if(c<128)return c;
+  unsigned n=c>=0xf0&&c<=0xf4?4:c>=0xe0&&c<=0xef?3:c>=0xc2&&c<=0xdf?2:0;
+  if(!n)return 0xfffd;
+  unsigned v=c & (127u>>n);
+  for(unsigned i=1;i<n;i++){if((p[i]&0xc0)!=0x80)return 0xfffd;v=v*64+(p[i]&63);}
+  if((n==3&&v<0x800)||(n==4&&v<0x10000)||(v>=0xd800&&v<=0xdfff)||v>0x10ffff)return 0xfffd;
+  *length=n;return v;
+}
+static unsigned compose(unsigned a,unsigned b) {
+  if(a>=0x1100&&a<=0x1112&&b>=0x1161&&b<=0x1175)
+    return 0xac00+((a-0x1100)*21+b-0x1161)*28;
+  if(a>=0xac00&&a<=0xd7a3&&!((a-0xac00)%28)&&b>=0x11a8&&b<=0x11c2)
+    return a+b-0x11a7;
+  if(a>65535||b>65535)return 0;
+  uint32_t key=a<<16|b;
+  unsigned lo=0,hi=sizeof text_pairs/sizeof text_pairs[0];
+  while(lo<hi){unsigned m=(lo+hi)/2;uint32_t k=(uint32_t)text_pairs[m][0]<<16|text_pairs[m][1];if(k<key)lo=m+1;else hi=m;}
+  return lo<sizeof text_pairs/sizeof text_pairs[0]&&text_pairs[lo][0]==a&&text_pairs[lo][1]==b?text_pairs[lo][2]:0;
+}
+void xz_text_copy(char *out,size_t cap,const char *text) {
+  if(!out||!cap)return;
+  const unsigned char *p=(const unsigned char *)(text?text:"");
+  size_t used=0;
+  while(*p){
+    unsigned n,c=scalar(p,&n);p+=n;
+    while(*p){unsigned step,second=scalar(p,&step),joined=compose(c,second);if(!joined)break;c=joined;p+=step;}
+    n=c<128?1:c<0x800?2:c<0x10000?3:4;
+    if(n>=cap-used)break;
+    unsigned v=c;
+    for(unsigned i=n-1;i;i--){out[used+i]=(char)(128+(v&63));v>>=6;}
+    out[used]=(char)(n==1?v:(n==2?0xc0:n==3?0xe0:0xf0)|v);used+=n;
   }
-  memcpy(out, text, n);
-  out[n] = 0;
+  out[used]=0;
 }
 bool xz_fragment(xz_json_buffer_t *b, const char *p, int n, int offset,
                  int total) {

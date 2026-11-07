@@ -1,0 +1,8 @@
+Twemoji graphics © Twitter, Inc. and other contributors.
+Graphics licensed under Creative Commons Attribution 4.0 International.
+https://creativecommons.org/licenses/by/4.0/
+https://github.com/twitter/twemoji
+Source supplied by the XiaoZhi theme generator, commit 55517b40d724014faff00f941ca700cbf9d14b51
+https://github.com/78/xiaozhi-assets-generator/tree/55517b40d724014faff00f941ca700cbf9d14b51/web/public/static/emojis/twemoji64
+The default neutral, happy, thinking, sleepy, sad and surprised images are resized to 32x32 and converted to RGB565+A8 for the AI Passport screen.
+

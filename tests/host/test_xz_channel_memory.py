@@ -126,6 +126,7 @@ static unsigned parse_allocations;
 static unsigned queue_sends, pre_ready_data, stopped_data, aes_frees, sockets, closes;
 static unsigned socket_options;
 static unsigned live[ALLOC_KINDS], allocated[ALLOC_KINDS];
+static void handle_mcp(channel_t *c,const cJSON *j){(void)c;(void)j;}
 static channel_t *active_channel;
 static cJSON **active_cloud;
 static void emit(int event,esp_mqtt_event_t *data);
@@ -440,10 +441,20 @@ int main(int argc,char **argv) {
     int expected_error=scenario==CONNECT_ERROR?configure_error():CHANNEL_OK;
     if(scenario==CALLBACK_GATE) {
         mqtt.callback=mqtt_event; mqtt.arg=c;
+        cJSON_Delete(cloud); cloud=NULL; start_calls=1;
         ignored_data();
         mqtt_event(c,NULL,MQTT_EVENT_CONNECTED,NULL);
+        const char init[]="{\"type\":\"mcp\",\"payload\":{\"method\":\"initialize\"}}";
+        const int length=sizeof init-1;
+        data_event(init,12,0,length);
+        data_event(init+12,length-12,12,length);
+        channel_message_t *message=channel_take(c,0);
+        assert(atomic_load(&c->connected) && message && !strcmp(message->data,init));
+        release(message);
+        atomic_store(&c->closing,true);
+        atomic_store(&c->control_ready,false);
+        mqtt_event(c,NULL,MQTT_EVENT_CONNECTED,NULL);
         ignored_data();
-        assert(atomic_load(&c->connected) && !c->partial && !c->first);
         atomic_store(&c->connected,false);
         assert(!send_text(c,"test"));
         if(scenario==SUCCESS && detail==99)outcome=SESSION_RENEW;
@@ -678,7 +689,7 @@ class ChannelMemoryTest(unittest.TestCase):
         self.case(0)
         self.case(1)
 
-    def test_callback_data_ignored_before_control_ready(self):
+    def test_first_mcp_delivered_immediately_after_connect_and_ignored_after_close(self):
         self.case(20)
 
     def test_invalid_configuration_remains_caller_owned(self):

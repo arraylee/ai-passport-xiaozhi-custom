@@ -552,7 +552,8 @@ bool app_plays_init(const app_plays_config_t *config) {
         .release_audio = C.release_audio, .portal_activity = C.portal_activity,
         .pause_radio = platform_ble_voice_pause,
         .resume_radio = platform_ble_voice_resume, .get_volume = C.get_volume,
-        .set_volume = C.set_volume, .user = C.user};
+        .set_volume = C.set_volume, .user = C.user, .get_brightness = C.get_brightness,
+        .set_brightness = C.set_brightness};
     xiaozhi_init(&voice);
     ab_session_init(&session); ab_audio_meter_reset(&meter); ab_answer_picker_init(&picker);
     mic_owned = false;

@@ -3,6 +3,7 @@
 The existing PTP1 sprites and all partition boundaries stay unchanged. The font
 starts at a 64KiB page boundary and is mapped, never copied into a RAM cache.
 """
+from pathlib import Path
 import hashlib
 import re
 import struct
@@ -25,10 +26,10 @@ def validate(blob):
     if not HEADER <= len(blob) <= CAPACITY - OFFSET:
         raise ValueError('body font length')
     h = struct.unpack_from('<4s15I', blob)
-    if h[:3] != (b'BDF1', 1, len(blob)) or h[3] != zlib.crc32(blob[16:]):
+    if h[0] != b'BDF1' or h[1] not in (1, 2) or h[2] != len(blob) or h[3] != zlib.crc32(blob[16:]):
         raise ValueError('body font header/CRC')
     bitmap, size, metrics, count, maps = h[4:9]
-    if not 1 <= maps <= 2 or any(h[9 + maps * 2:]):
+    if not 1 <= maps <= 2 or any(h[9 + maps * 2 : (15 if h[1] == 2 else 16)]):
         raise ValueError('body font cmap count/reserved')
     entries = [(bitmap, size), (metrics, count * 8)]
     entries += [(h[9 + i * 2], h[10 + i * 2] * 2) for i in range(maps)]
@@ -39,6 +40,10 @@ def validate(blob):
         if any(x != 255 for x in blob[end:at]):
             raise ValueError('body font padding')
         end = at + length
+    if h[1] == 2:
+        if h[15] != (end+3)&~3 or blob[h[15]:h[15]+4] != b'KOR1':
+            raise ValueError('Korean body font offset')
+        end = len(blob)
     if end != len(blob) or not 2 <= count <= 65535:
         raise ValueError('body font trailing bytes/count')
     if sum(h[10 + i * 2] for i in range(maps)) != count - 1:
@@ -88,6 +93,10 @@ def build(source, out):
     for at, length in sections[2:]:
         h += [at, length // 2]
     h += [0] * (16 - len(h))
+    blob.extend(b'\xff' * (-len(blob) % 4))
+    h[1], h[15] = 2, len(blob)
+    blob.extend((Path(__file__).resolve().parents[1]/'assets/fonts/hangul16.bin').read_bytes())
+    h[2] = len(blob)
     struct.pack_into('<4s15I', blob, 0, *h)
     struct.pack_into('<I', blob, 12, zlib.crc32(blob[16:]))
     validate(blob)

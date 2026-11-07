@@ -10,6 +10,6 @@ idf_component_register(
          "src/avatar_store.c" "src/platform_pet_art.c"
     INCLUDE_DIRS "include"
     REQUIRES ports services driver esp_lcd
-    PRIV_REQUIRES esp_lvgl_port button esp_codec_dev esp_hw_support bt nvs_flash
+    PRIV_REQUIRES presentation esp_lvgl_port button esp_codec_dev esp_hw_support bt nvs_flash
                   esp_driver_i2c esp_driver_i2s esp_partition esp_new_jpeg esp_adc
                   mbedtls esp_driver_usb_serial_jtag esp_rom spiffs)

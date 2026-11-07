@@ -14,6 +14,8 @@ from test_clicker_platform import host_sanitizers, run_host
 
 ROOT = Path(__file__).resolve().parents[2]
 BOUNDARY = r'''
+#include <stdatomic.h>
+static atomic_flag preference_busy=ATOMIC_FLAG_INIT;
 #include <assert.h>
 #include <limits.h>
 #include <stdarg.h>
@@ -189,7 +191,7 @@ class AtCommandHandlers(unittest.TestCase):
         app = (ROOT / "components/app/src/app.c").read_text()
         source = directory / "test.c"
         source.write_text(BOUNDARY + "\n".join(function(app,name) for name in
-                          ("plays_get_brightness","plays_preview_brightness","plays_set_brightness","plays_get_sleep_minutes","at_after","at_is","at_decimal","at_reply","at_reboot","at_binding_reset","on_at_command")) + CASES)
+                          ("plays_get_brightness","plays_preview_brightness","apply_brightness","plays_set_brightness","plays_get_sleep_minutes","at_after","at_is","at_decimal","at_reply","at_reboot","at_binding_reset","on_at_command")) + CASES)
         cls.executable = directory / "test"
         run_host(["cc","-std=c11","-UNDEBUG","-Wall","-Wextra","-Werror",f"-fsanitize={cls.sanitizers}",
                   "-fno-sanitize-recover=all","-g","-I"+str(ROOT/"components/core/services/include"),

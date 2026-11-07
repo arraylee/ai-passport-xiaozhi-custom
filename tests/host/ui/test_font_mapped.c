@@ -56,11 +56,32 @@ static void exercise_resource_failures(void){
     assert(companion_resources_init()&&maps_live==3&&companion_avatar(0)&&companion_avatar(1)&&!companion_avatar(2));
     unsigned before=maps_total;assert(companion_resources_init()&&maps_total==before);
 }
+static unsigned verify_font_range(const lv_font_t *font,const uint8_t *characters,unsigned count,unsigned base){
+    unsigned long long ink=0;
+    lv_draw_buf_t *buf=lv_draw_buf_create(40,40,LV_COLOR_FORMAT_A8,0);assert(buf);
+    for(unsigned i=0;i<count;i++){
+        unsigned c=characters?u16(characters+2*i):base+i;
+        lv_font_glyph_dsc_t g={0};assert(lv_font_get_glyph_dsc(font,&g,c,0)&&!g.is_placeholder);
+        memset(buf->data,0,buf->data_size);assert(lv_font_get_glyph_bitmap(&g,buf)==buf);
+        unsigned nonzero=0;for(unsigned y=0;y<g.box_h;y++)for(unsigned x=0;x<g.box_w;x++)nonzero+=buf->data[y*buf->header.stride+x]!=0;
+        assert(nonzero || c==0x3164);ink+=nonzero;
+    }
+    lv_draw_buf_destroy(buf);assert(ink>count);return count;
+}
 int main(void){
     lv_init();size_t size;
     companion_data=read_file(FONT_COMPANION_FILE,&size);assert(size==0x200000);
     body_data=read_file(FONT_BODY_FILE,&size);assert(size==BODY_FONT_SIZE);
     art_part.readonly=false;exercise_resource_failures();
+    uint8_t *languages=read_file(FONT_LANG_FILE,&size);passport_languages_bind(languages,size);
+    unsigned supplementary=u32(languages+4);
+    const lv_font_t *test_fonts[]={&ui_font_body,&ui_font_title};
+    for(unsigned i=0;i<2;i++){
+        assert(verify_font_range(test_fonts[i],NULL,11172,0xac00)==11172);
+        verify_font_range(test_fonts[i],NULL,94,0x3131);
+        verify_font_range(test_fonts[i],languages+16,supplementary,0);
+    }
+    printf("Korean and language fallback: 11172 syllables + 94 letters + %u supplemental characters, both sizes decoded.\n",supplementary);
     uint8_t *oracle=read_file(FONT_ORACLE_FILE,&size);
     assert(!memcmp(oracle,"FTO1",4)&&size==8+16*u32(oracle+4));
     unsigned counts[2]={0},pixels=0,interjections=0;
@@ -91,5 +112,5 @@ int main(void){
     printf("Production resource loader: missing/corrupt/wrong partition/read-only/map failure, cleanup and idempotent init PASS.\n");
     passport_bind_body(NULL);passport_bind_nickname(NULL);mapped=NULL;
     esp_partition_munmap(handle);esp_partition_munmap(body_handle);assert(!maps_live);
-    free(oracle);free(body_data);free(companion_data);return 0;
+    free(languages);free(oracle);free(body_data);free(companion_data);return 0;
 }

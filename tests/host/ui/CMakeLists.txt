@@ -223,14 +223,14 @@ endif()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${REPO}/tools/companion_pack.py" "${REPO}/tools/body_font_pack.py"
     "${PRESENTATION}/src/lv_font_cn_16.c" "${PRESENTATION}/src/lv_font_cn_24.c")
-add_executable(test_font_mapped test_font_mapped.c font_heap_cap.c
+add_executable(test_font_mapped test_font_mapped.c font_heap_cap.c "${PRESENTATION}/src/hangul_font.c"
     "${mapped_font_dir}/lv_font_cn_16.c" "${mapped_font_dir}/lv_font_cn_24.c"
     "${PASSPORT_FONT_DIR}/ui_font_body.c" "${PASSPORT_FONT_DIR}/ui_font_title.c"
     $<TARGET_OBJECTS:passport_font_test_codec>)
 target_include_directories(test_font_mapped PRIVATE "${PRESENTATION}/include"
     "${mapped_font_dir}" "${CMAKE_CURRENT_LIST_DIR}/resource_stubs")
 target_compile_definitions(test_font_mapped PRIVATE FONT_COMPANION_FILE="${mapped_font_dir}/companion.bin"
-    FONT_BODY_FILE="${mapped_font_dir}/body_font.bin" FONT_ORACLE_FILE="${CMAKE_CURRENT_LIST_DIR}/font_oracle.bin")
+    FONT_LANG_FILE="${REPO}/assets/fonts/languages.bin" FONT_BODY_FILE="${mapped_font_dir}/body_font.bin" FONT_ORACLE_FILE="${CMAKE_CURRENT_LIST_DIR}/font_oracle.bin")
 target_compile_options(test_font_mapped PRIVATE -UNDEBUG)
 target_link_libraries(test_font_mapped PRIVATE lvgl ZLIB::ZLIB)
 add_test(NAME font_mapped_all_glyphs COMMAND test_font_mapped)
@@ -266,3 +266,8 @@ target_include_directories(test_boot_ui PRIVATE ${xz_includes} "${REPO}/componen
 target_compile_options(test_boot_ui PRIVATE -UNDEBUG)
 target_link_libraries(test_boot_ui PRIVATE lvgl m ZLIB::ZLIB)
 add_test(NAME boot_animation COMMAND test_boot_ui)
+
+foreach(official_target test_xiaozhi_ui render_ui render_ui_platform test_boot_ui)
+    target_sources(${official_target} PRIVATE official_io.c "${PRESENTATION}/src/ui_official.c"
+        "${REPO}/components/platform/xiaozhi/xz_theme_font.c")
+endforeach()

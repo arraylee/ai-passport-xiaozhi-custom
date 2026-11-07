@@ -800,7 +800,7 @@ static cJSON *cloud_request(const char *payload) {
   esp_http_client_set_header(h, "Client-Id", uuid);
   esp_http_client_set_header(h, "Content-Type", "application/json");
   esp_http_client_set_header(h, "Accept-Language", "zh-CN");
-  esp_http_client_set_header(h, "User-Agent", "ai-passport/2.1.0");
+  esp_http_client_set_header(h, "User-Agent", "ai-passport/" XZ_CONSOLE_VERSION);
   esp_http_client_set_post_field(h, payload, strlen(payload));
   esp_err_t e = esp_http_client_perform(h);
   int code = esp_http_client_get_status_code(h);
@@ -865,21 +865,47 @@ bool xz_cloud_time_ready(atomic_bool *cancel, xz_status_fn status) {
   }
   return !atomic_load(cancel);
 }
-cJSON *xz_cloud_config(atomic_bool *cancel, xz_status_fn status,
-                       char code[24]) {
-  status(XZ_CLOUD, "正在连接小智");
-  ESP_LOGI("xiaozhi", "cloud_config_request=1");
-  if (!xz_cloud_time_ready(cancel,status)) return NULL;
+static cJSON *request_device_report(void) {
   char mac[18], uuid[37], payload[640];
   xz_identity(mac, uuid);
-  snprintf(payload, sizeof payload,
+  int size = snprintf(payload, sizeof payload,
            "{\"version\":2,\"language\":\"zh-CN\",\"flash_size\":8388608,"
            "\"psram_size\":0,\"mac_address\":\"%s\",\"uuid\":\"%s\",\"chip_"
            "model_name\":\"esp32c3\",\"application\":{\"name\":\"ai-passport\","
            "\"version\":\"%s\",\"idf_version\":\"%s\"},\"board\":{\"type\":"
            "\"ai-passport-leogie\",\"name\":\"ai-passport\",\"mac\":\"%s\"}}",
-           mac, uuid, esp_app_get_description()->version,
+           mac, uuid, XZ_CONSOLE_VERSION,
            esp_app_get_description()->idf_ver, mac);
+  if (size < 0 || (size_t)size >= sizeof payload) {
+    cloud_failure = CLOUD_RESPONSE;
+    cloud_retryable = false;
+    return NULL;
+  }
+  return cloud_request(payload);
+}
+
+cJSON *xz_cloud_refresh_version(cJSON *cached, const atomic_bool *cancel) {
+  static uint64_t next_attempt_ms;
+  uint64_t now = (uint64_t)esp_timer_get_time() / 1000;
+  if (atomic_load(cancel) || xz_cloud_cache_version_current(cached) || now < next_attempt_ms)
+    return cached;
+  next_attempt_ms = now + 300000;
+  // The previous connection profile remains in NVS. Release its parsed copy
+  // before HTTPS so the TLS handshake has the normal amount of contiguous RAM.
+  cJSON_Delete(cached);
+  cJSON *fresh = request_device_report();
+  bool saved = !atomic_load(cancel) && xz_cloud_cache_save(fresh);
+  ESP_LOGI("xiaozhi", "console_report version=%s saved=%d", XZ_CONSOLE_VERSION, saved);
+  if (saved) return fresh;
+  cJSON_Delete(fresh);
+  return atomic_load(cancel) ? NULL : xz_cloud_cache_load();
+}
+
+cJSON *xz_cloud_config(atomic_bool *cancel, xz_status_fn status,
+                       char code[24]) {
+  status(XZ_CLOUD, "正在连接小智");
+  ESP_LOGI("xiaozhi", "cloud_config_request=1 version=%s", XZ_CONSOLE_VERSION);
+  if (!xz_cloud_time_ready(cancel,status)) return NULL;
   // Wall-clock window, independent of HTTP speed: older users have time to
   // log in and bind. A transient poll failure must not instantly end setup.
   const uint64_t deadline=(uint64_t)esp_timer_get_time()/1000+30u*60u*1000u;
@@ -887,7 +913,7 @@ cJSON *xz_cloud_config(atomic_bool *cancel, xz_status_fn status,
   while (!atomic_load(cancel) && (uint64_t)esp_timer_get_time()/1000<deadline) {
     cJSON *root=NULL;
     for(unsigned retry=0;retry<3&&!atomic_load(cancel);retry++) {
-      root=cloud_request(payload);
+      root=request_device_report();
       if(root || !cloud_retryable || retry==2)break;
       if(!have_code)status(XZ_CLOUD,"小智连接较慢\n正在重试，请稍候");
       for(unsigned wait=0;wait<20&&!atomic_load(cancel);wait++)vTaskDelay(pdMS_TO_TICKS(100));

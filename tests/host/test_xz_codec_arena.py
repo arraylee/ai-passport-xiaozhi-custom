@@ -221,6 +221,13 @@ class CodecArenaLifecycleTest(unittest.TestCase):
 static xz_view_t working;
 static atomic_bool cancel;
 static bool setup_requested;
+enum {XZ_OFFICIAL_AVATAR=2,SESSION_THEME_FAILED=9};
+static int outcome;
+static bool xz_theme_pending_boot(void){return false;}
+static bool xz_theme_download(const atomic_bool *c){(void)c;assert(0);return false;}
+static void xz_theme_cancel_download(void){assert(0);}
+static void persist_avatar(unsigned a){(void)a;assert(0);}
+static void esp_restart(void){assert(0);}
 static unsigned scenario,probe_calls,wifi_calls,cloud_calls,close_calls;
 typedef struct {} cJSON;
 static void codec_arena_metric(unsigned step){(void)step;}
@@ -236,6 +243,7 @@ static bool xz_wifi_open(bool setup,atomic_bool *c,void (*fn)(xz_phase_t,const c
  return scenario!=3&&scenario!=4;
 }
 static cJSON *xz_cloud_cache_load(void){return NULL;}
+static cJSON *xz_cloud_refresh_version(cJSON *cached,const atomic_bool *c){(void)c;return cached;}
 static bool xz_cloud_time_ready(atomic_bool *c,void (*fn)(xz_phase_t,const char *)){(void)fn;return !atomic_load(c);}
 static cJSON *xz_cloud_config(atomic_bool *c,void (*fn)(xz_phase_t,const char *),char *code){
  (void)fn;(void)code;cloud_calls++;assert(arena&&fragmented);

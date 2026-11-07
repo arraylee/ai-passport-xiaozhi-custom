@@ -22,7 +22,13 @@ BOUNDARY=r'''
 #define MSG_DONTWAIT 1
 #define pdMS_TO_TICKS(x) (x)
 enum {XZ_READY,XZ_LISTEN,XZ_THINK,XZ_SPEAK,XZ_ERROR,XZ_OFF};
-static struct {int phase;} working;
+static struct { int phase; unsigned emotion; char detail[160]; } working;
+static unsigned mcp_seen;
+static void handle_mcp(void *c, const cJSON *j){(void)c;assert(j);mcp_seen++;}
+static int xz_emotion_index(const char *s){return !strcmp(s,"happy")?1:-1;}
+static bool xz_theme_reboot_requested(void){return false;}
+static void esp_restart(void){assert(0);}
+
 static atomic_bool running,cancel,requested_talk,requested_interrupt,requested_end;
 enum {SESSION_CLOSED,SESSION_PARK,SESSION_RENEW,SESSION_QUIET_BYE,SESSION_INTENT_BYE,SESSION_AUDIO_LOST};
 typedef struct {unsigned quiet_samples;} xz_quiet_t;

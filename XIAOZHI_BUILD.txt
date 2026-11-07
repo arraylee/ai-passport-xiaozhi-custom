@@ -1,7 +1,8 @@
-AI PASSPORT 小智版 2.1.0-xiaozhi.14
+AI PASSPORT 小智版 2.1.0-xiaozhi.17
 
 基线：默认固件 2.1.0-preview.45 的 798 文件快照。
-硬件和分区：ESP32-C3 / 8 MB；沿用默认固件的显示、音频、按键、电池与分区配置。
+硬件为 ESP32-C3 / 8 MB。设备身份、用户配置和 Wi-Fi 存储地址沿用 .14。
+.15 在原只读素材区内重排图像和字库，分出 920 KiB 的官方主题区及 92 KiB 的表情缓存。
 
 使用 ESP-IDF v5.5.3，依赖版本见 dependencies.lock。
 初始化 ESP-IDF 环境后，在本目录执行：

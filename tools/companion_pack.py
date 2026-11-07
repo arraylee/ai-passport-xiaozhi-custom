@@ -68,14 +68,32 @@ def build(out):
             rgb.extend(struct.pack('<H',((r>>3)<<11)|((g>>2)<<5)|(b>>3)));alpha.append(a)
         data=rgb+alpha;entries.append((len(blob),len(data)));blob.extend(data);blob.extend(b'\xff'*(-len(blob)%4))
     if len(entries)!=2+AVATARS*FRAMES: raise ValueError('expected two fonts and twelve expression frames')
+    korean_at = len(blob)
+    blob.extend((ROOT/'assets/fonts/hangul20.bin').read_bytes())
+    blob.extend(b'\xff' * (-len(blob)%4))
+    icons_at = len(blob)
+    for name in ('neutral','happy','thinking','sleepy','sad','surprised'):
+        icon=Image.open(ROOT/f'assets/xiaozhi/official/{name}.png').convert('RGBA').resize((32,32),Image.Resampling.LANCZOS)
+        pixels=list(icon.getdata())
+        blob.extend(b''.join(struct.pack('<H',((r>>3)<<11)|((g>>2)<<5)|(b>>3)) for r,g,b,a in pixels))
+        blob.extend(bytes(a for r,g,b,a in pixels))
+    default_avatar_at=len(blob)
+    blob.extend(Image.open(ROOT/'assets/avatars/avatar-01.png').convert('RGBA').tobytes('raw','BGRA'))
     blob[:4]=b'CPR1';struct.pack_into('<II',blob,4,3,len(blob))
     for i,e in enumerate(entries):struct.pack_into('<II',blob,16+i*8,*e)
     struct.pack_into('<I',blob,12,zlib.crc32(blob[16:]))
     digest=hashlib.sha256(blob).hexdigest(); total=len(blob)
     blob.extend(b'\xff'*(SIZE-len(blob)));validate(blob)
     (out/'companion.bin').write_bytes(blob)
-    (out/'companion_pack_meta.h').write_text(f'#pragma once\n#define COMPANION_SIZE {total}u\n#define COMPANION_CRC 0x{struct.unpack_from("<I",blob,12)[0]:08x}u\n#define COMPANION_SHA "{digest}"\n')
+    (out/'companion_pack_meta.h').write_text(f'#pragma once\n#define OFFICIAL_ICONS_OFFSET {icons_at}u\n#define DEFAULT_AVATAR_OFFSET {default_avatar_at}u\n#define HANGUL_TITLE_BYTES {len((ROOT/"assets/fonts/hangul20.bin").read_bytes())}u\n#define HANGUL_TITLE_OFFSET {korean_at}u\n#define COMPANION_SIZE {total}u\n#define COMPANION_CRC 0x{struct.unpack_from("<I",blob,12)[0]:08x}u\n#define COMPANION_SHA "{digest}"\n')
     (out/'companion_catalog.json').write_text(json.dumps(dict(format='CPR1',version=3,portraits=AVATARS,frames_per_portrait=FRAMES,width=WIDTH,height=HEIGHT,used=total,size=SIZE,sha256=hashlib.sha256(blob).hexdigest(),entries=entries,body_font_bytes=len(body)),indent=2)+'\n')
+    # Only device-mapped fonts gain an extra fallback; the source oracle stays independent.
+    for file, size in [('lv_font_cn_16.c', 16), ('lv_font_cn_24.c', 20)]:
+        path = out / file
+        source = path.read_text()
+        assert source.count('.fallback = NULL') == 1
+        source = source.replace('.fallback = NULL', f'.fallback = &passport_ko_{size}')
+        path.write_text('#include "presentation/hangul_font.h"\n' + source)
     print(f'Companion resources: {total}/{SIZE} bytes; fonts {entries[0][1]+entries[1][1]}, two animated faces {AVATARS*FRAMES*FRAME_BYTES}')
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);build(p.parse_args().output)

@@ -37,6 +37,9 @@ FONT_METADATA_FILES = (*FONT_LICENSE_FILES, "FONT-LICENSES.txt", "font-sources.j
 LIBRARY_LICENSE_FILES = ("ESP-AUDIO-CODEC-LICENSE.txt", "PUFF-LICENSE.txt", "SPEEXDSP-LICENSE.txt", "WEBRTC-VAD-LICENSE.txt")
 
 
+THEME_NOTICES = ('TWEMOJI-NOTICE.txt', 'CLDR-LICENSE.txt')
+
+
 def validate_library_license_payload(payload):
     for name in LIBRARY_LICENSE_FILES:
         expected = (ROOT / "assets/licenses" / name).read_bytes()
@@ -85,8 +88,10 @@ EXPECTED_PARTITIONS = (
     ("cardid", 0x01, 0x02, 0x356000, 0x004000),
     ("imguser", 0x01, 0x82, 0x35A000, 0x020000),
     ("audio", 0x01, 0x82, 0x37A000, 0x080000),
-    ("imgava", 0x01, 0x82, 0x3FA000, 0x100000),
-    ("petart", 0x01, 0x40, 0x500000, 0x100000),
+    ("imgava", 0x01, 0x82, 0x3FA000, 0x020000),
+    ("assets", 0x01, 0x82, 0x41A000, 0x0E6000),
+    ("petart", 0x01, 0x40, 0x500000, 0x0E9000),
+    ("theme_cache", 0x01, 0x42, 0x5E9000, 0x017000),
     ("companion", 0x01, 0x41, 0x600000, 0x200000),
 )
 
@@ -200,13 +205,13 @@ def _parse_partition_table(path):
     return tuple(entries)
 
 
-def _validate_partition_table(path):
+def _validate_partition_table(path, expected_partitions=EXPECTED_PARTITIONS):
     actual = _parse_partition_table(path)
-    if len(actual) != len(EXPECTED_PARTITIONS):
+    if len(actual) != len(expected_partitions):
         raise RuntimeError(
-            f"固定 partition map 数量错误: {len(actual)}, expected {len(EXPECTED_PARTITIONS)}"
+            f"固定 partition map 数量错误: {len(actual)}, expected {len(expected_partitions)}"
         )
-    for expected, found in zip(EXPECTED_PARTITIONS, actual):
+    for expected, found in zip(expected_partitions, actual):
         if expected != found:
             name = expected[0]
             raise RuntimeError(
@@ -321,9 +326,9 @@ def validate_release_inputs(build_dir, app_bin):
         _segment("factory", app_name, build_dir / app_name,
                  0x010000, 0x010000, 0x310000),
         _segment("imgava", "imgava.bin", build_dir / "imgava.bin",
-                 0x3FA000, 0x3FA000, 0x4FA000),
+                 0x3FA000, 0x3FA000, 0x41A000),
         _segment("petart", "petart.bin", build_dir / "petart.bin",
-                 0x500000, 0x500000, 0x600000),
+                 0x500000, 0x500000, 0x5E9000),
         _segment("companion", "companion.bin", build_dir / "companion" / "companion.bin",
                  0x600000, 0x600000, 0x800000),
     )
@@ -335,8 +340,8 @@ def validate_release_inputs(build_dir, app_bin):
         )
     if segments[1].size != 0xC00:
         raise RuntimeError("partition-table.bin 必须是 0xc00 字节")
-    if segments[3].size != 0x100000:
-        raise RuntimeError("imgava.bin 必须完整覆盖 0x100000 字节 imgava 分区")
+    if segments[3].size != 0x20000:
+        raise RuntimeError("imgava.bin 必须完整覆盖 0x20000 字节 imgava 分区")
     if segments[0].source.read_bytes()[:1] != b"\xe9":
         raise RuntimeError("bootloader.bin 不是有效 ESP 镜像")
     if segments[2].source.read_bytes()[:1] != b"\xe9":
@@ -531,14 +536,24 @@ def write_release_artifacts(build_dir, archive_path, standalone_app_path,
     payload.update(font_license_payload(payload[segments[2].file]))
     payload.update({name: (ROOT / "assets/licenses" / name).read_bytes() for name in LIBRARY_LICENSE_FILES})
     validate_library_license_payload(payload)
+    revision = re.fullmatch(r"2\.1\.0-xiaozhi\.(\d+)", metadata.get("version", ""))
+    has_themes = bool(revision and int(revision[1]) >= 15)
+    if has_themes:
+        payload.update({name: (ROOT / "assets/licenses" / name).read_bytes() for name in THEME_NOTICES})
     for name, notice in (("farewell", "FAREWELL-SOURCE.txt"), ("welcome", "WELCOME-SOURCE.txt"), ("startup", "BOOT-SOURCE.txt")):
         suffix, audio_format, rate = ("pcm", "PCM-S16LE", 24000) if name == "welcome" else ("adpcm", "IMA-ADPCM", 16000)
+        if name == "welcome" and has_themes:
+            suffix,audio_format="rice","Rice-PCM-S16LE"
         prompt_file = "startup_magicbox.adpcm" if name == "startup" else f"{name}_zh.{suffix}"
         prompt_path = ROOT / "components/platform/xiaozhi" / prompt_file
         if not prompt_path.is_file():
+            if has_themes:
+                raise RuntimeError(f"缺少随固件交付的语音 {name}")
             continue
         prompt = prompt_path.read_bytes()
         offset = payload[segments[2].file].find(prompt) if prompt else -1
+        if has_themes and offset < 0:
+            raise RuntimeError(f"应用中缺少 {name} 录音")
         if name == "startup" and metadata.get("version", "").startswith("2.1.0-xiaozhi.") and int(metadata["version"].rsplit(".", 1)[1]) >= 11:
             if offset < 0 or len(prompt) != 25251:
                 raise RuntimeError("开机音乐未正确嵌入应用，拒绝发布")
@@ -560,7 +575,7 @@ def write_release_artifacts(build_dir, archive_path, standalone_app_path,
     manifest["shared_game_art"] = {
         "uses": ["dodge", "home-avatar"],
         "file": "petart.bin", "catalog": "petart_catalog.json", "format": "PTP1",
-        "offset": 0x500000, "capacity": pet_art_pack.CAPACITY,
+        "offset": 0x500000, "capacity": segments[4].region_end - segments[4].region_start,
         "bytes": len(payload["petart.bin"]), "count": pet_catalog["count"],
         "sha256": hashlib.sha256(payload["petart.bin"]).hexdigest(), "mapping": "read-only Flash, native PSR1 row decode",
     }

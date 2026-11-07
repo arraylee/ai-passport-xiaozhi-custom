@@ -34,6 +34,10 @@ static bool identity_matches(const cJSON *root, const char *mac, const char *uui
 static void discard(char *data, size_t size) {
     if (data) { memset(data,0,size); free(data); }
 }
+bool xz_cloud_cache_version_current(const cJSON *cached) {
+    const cJSON *version = cJSON_GetObjectItemCaseSensitive(cached, "reported_firmware");
+    return cJSON_IsString(version) && !strcmp(version->valuestring, XZ_CONSOLE_VERSION);
+}
 cJSON *xz_cloud_cache_load(void) {
     char mac[18],uuid[37]; xz_identity(mac,uuid);
     if (!uuid[0]) return NULL;
@@ -59,6 +63,7 @@ bool xz_cloud_cache_save(const cJSON *cloud) {
     size_t size=0,old_size=0,old_capacity=0;
     bool ok=false;
     if (!root || !cJSON_AddNumberToObject(root,"version",1) ||
+        !cJSON_AddStringToObject(root,"reported_firmware",XZ_CONSOLE_VERSION) ||
         !cJSON_AddStringToObject(root,"mac",mac) || !cJSON_AddStringToObject(root,"uuid",uuid) ||
         !(mqtt=cJSON_AddObjectToObject(root,"mqtt"))) goto done;
     const cJSON *source=cJSON_GetObjectItemCaseSensitive(cloud,"mqtt");

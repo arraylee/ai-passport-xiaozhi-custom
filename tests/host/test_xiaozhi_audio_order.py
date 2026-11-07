@@ -20,7 +20,13 @@ BOUNDARY = r'''
 #define pdMS_TO_TICKS(x) (x)
 #define ESP_LOGW(...) ((void)0)
 enum {XZ_THINK, XZ_SPEAK, XZ_LISTEN, XZ_READY, XZ_ERROR, XZ_OFF};
-static struct { int phase; } working;
+static struct { int phase; unsigned emotion; char detail[160]; } working;
+static unsigned mcp_seen;
+static void handle_mcp(void *c, const cJSON *j){(void)c;assert(j);mcp_seen++;}
+static int xz_emotion_index(const char *s){return !strcmp(s,"happy")?1:-1;}
+static bool xz_theme_reboot_requested(void){return false;}
+static void esp_restart(void){assert(0);}
+
 static atomic_bool cancel,requested_interrupt,requested_talk;
 enum {SESSION_CLOSED,SESSION_PARK,SESSION_RENEW,SESSION_QUIET_BYE,SESSION_INTENT_BYE,SESSION_AUDIO_LOST};
 static struct {unsigned quiet_samples;} window,*quiet=&window;
@@ -97,6 +103,8 @@ int main(void) {
     dispatch();assert(outcome==SESSION_INTENT_BYE && !udp_reads && !encoder && !audio_owned);
     reset();
     assert(!xz_is_farewell("不要说拜拜") && !xz_is_farewell("拜拜是什么意思"));
+    reset(); messages[count++]="{\"type\":\"mcp\"}"; messages[count++]="{\"type\":\"llm\",\"emotion\":\"happy\"}";
+    dispatch(); assert(mcp_seen==1 && working.emotion==1 && working.phase==XZ_THINK);
     reset(); cancel=true; dispatch(); assert(!udp_reads);
     reset();messages[count++]="{\"type\":\"stt\",\"text\":\"valid message\"}";parse_fail=true;
     dispatch();assert(working.phase==XZ_ERROR && !udp_reads && head==1);

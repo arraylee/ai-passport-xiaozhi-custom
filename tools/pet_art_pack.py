@@ -119,7 +119,7 @@ def validate_pack(data, catalog=None):
         if not isinstance(catalog, dict) or not isinstance(catalog.get("sprites"), list):
             raise ValueError("invalid catalog structure")
         if (catalog.get('format') != 'PTP1' or catalog.get('version') != 1 or
-                catalog.get('offset') != 0x500000 or catalog.get('capacity') != CAPACITY or
+                catalog.get('offset') != 0x500000 or catalog.get('capacity') not in (CAPACITY, 0xe9000) or len(data) > catalog['capacity'] or
                 catalog.get('bytes') != len(data) or catalog.get('count') != count or
                 catalog.get('sha256') != hashlib.sha256(data).hexdigest() or
                 len(catalog.get('sprites', [])) != count):
@@ -206,7 +206,7 @@ def main():
     parser.add_argument('--size', type=lambda value: int(value, 0), required=True)
     parser.add_argument('--body-font', type=Path, help='BDF1 font in unused readonly space at +64KiB')
     args = parser.parse_args()
-    if args.size != CAPACITY: parser.error('petart partition must remain 1 MiB')
+    if args.size not in (CAPACITY, 0xe9000): parser.error('unexpected petart capacity')
     raw = args.input.read_bytes(); catalog = json.loads(args.catalog.read_text())
     validate_pack(raw, catalog)
     validate_shared_game_catalog(catalog)
@@ -214,9 +214,11 @@ def main():
         import body_font_pack
         raw, catalog = body_font_pack.bundle(raw, catalog, args.body_font.read_bytes())
     # Exact-length pack: only its sector-rounded extent is erased/written.
+    if len(raw) > args.size: parser.error('font/sprites exceed the readonly partition')
+    catalog['capacity'] = args.size
     args.output.write_bytes(raw)
     args.catalog_output.write_text(json.dumps(catalog, indent=2, sort_keys=True)+'\n')
-    print(f'PTP1: {catalog["count"]} sprites, {len(raw)}/{CAPACITY} bytes')
+    print(f'PTP1: {catalog["count"]} sprites, {len(raw)}/{args.size} bytes')
 
 
 if __name__ == '__main__': main()

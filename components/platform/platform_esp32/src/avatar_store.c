@@ -1,4 +1,6 @@
 #include "avatar_store.h"
+#include <string.h>
+#include "presentation/companion_resources.h"
 
 #include <limits.h>
 #include <stddef.h>
@@ -69,6 +71,9 @@ bool avatar_store_has(const char *name) {
 }
 
 int avatar_store_get_native(const char *name, const uint8_t **pixels, size_t *size) {
+    if (name && !strcmp(name, "avatar-01") && pixels && size && companion_home_avatar()) {
+        *pixels = companion_home_avatar(); *size = 96u * 156u * 4u; return AVATAR_PACK_OK;
+    }
     return avatar_pack_find_native(&s_pack, name, pixels, size);
 }
 

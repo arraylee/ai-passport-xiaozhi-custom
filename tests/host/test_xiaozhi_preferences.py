@@ -35,6 +35,7 @@ typedef int nvs_handle_t;
 typedef struct {unsigned (*get_volume)(void*);bool (*set_volume)(void*,unsigned);void *user;} xz_config_t;
 typedef struct {unsigned avatar,volume;bool natural_interrupt,output_active;} xz_view_t;
 static bool xiaozhi_output_active(void){return false;}
+enum { XZ_AVATARS=3 };
 static xz_config_t config;
 static xz_view_t view;
 static atomic_uint avatar;
@@ -98,7 +99,7 @@ int main(void){
 }
 '''
         run_c(boundary + function(source, 'plays_get_volume') +
-              function(source, 'plays_set_volume') + cases)
+              ("\n#include <stdatomic.h>\nstatic atomic_flag preference_busy=ATOMIC_FLAG_INIT;\n" + function(source,'apply_volume') + function(source, 'plays_set_volume')) + cases)
 
 
 if __name__ == '__main__':

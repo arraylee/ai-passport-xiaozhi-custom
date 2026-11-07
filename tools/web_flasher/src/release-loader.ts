@@ -96,8 +96,11 @@ function archiveNames(bytes: Uint8Array): string[] {
   return names;
 }
 
-function validatePartitions(data: Uint8Array, companion: boolean): void {
-  const partitions = companion ? [...PARTITIONS, COMPANION_PARTITION] : PARTITIONS;
+function validatePartitions(data: Uint8Array, companion: boolean, themes: boolean): void {
+  const partitions = themes ? [...PARTITIONS.slice(0, 8),
+    ["imgava", 1, 0x82, 0x3fa000, 0x20000, 0], ["assets", 1, 0x82, 0x41a000, 0xe6000, 0],
+    ["petart", 1, 0x40, 0x500000, 0xe9000, 2], ["theme_cache", 1, 0x42, 0x5e9000, 0x17000, 0],
+    COMPANION_PARTITION] : companion ? [...PARTITIONS, COMPANION_PARTITION] : PARTITIONS;
   require(data.length === 0xc00, "分区表长度必须是 0xC00");
   const v = view(data);
   partitions.forEach(([name, type, subtype, offset, size, flags], index) => {
@@ -130,17 +133,17 @@ function validateSprite(data: Uint8Array, width: number, height: number): void {
     require(x === width, "petart PSR1 行宽错误");
   }
 }
-async function validatePetPack(data: Uint8Array, catalog: ObjectValue, app: Uint8Array, digest: string): Promise<number> {
+async function validatePetPack(data: Uint8Array, catalog: ObjectValue, app: Uint8Array, digest: string, capacity: number): Promise<number> {
   if (catalog.body_font !== undefined) {
     const meta = object(catalog.body_font, "body font catalog"), length = Number(catalog.bytes);
     require(length >= 64 && length <= 0x10000 && data.length > 0x10040 && data.length <= 0x100000 &&
       data.subarray(length,0x10000).every(b => b === 255), "body font bundle bounds/padding");
     const font = data.subarray(0x10000), h = view(font), fontDigest = await sha256(font);
-    require(ascii(font,0,4) === "BDF1" && h.getUint32(4,true) === 1 && h.getUint32(8,true) === font.length &&
+    require(ascii(font,0,4) === "BDF1" && [1,2].includes(h.getUint32(4,true)) && h.getUint32(8,true) === font.length &&
       crc32(font.subarray(16)) === h.getUint32(12,true), "body font header/CRC");
     const maps = h.getUint32(32,true), glyphs = h.getUint32(28,true);
     require(maps >= 1 && maps <= 2 && glyphs >= 2 && glyphs <= 65535 &&
-      font.subarray(36+maps*8,64).every(b => b === 0), "body font cmap count/reserved");
+      font.subarray(36+maps*8,h.getUint32(4,true)===2?60:64).every(b => b === 0), "body font cmap count/reserved");
     const entries = [[h.getUint32(16,true),h.getUint32(20,true)], [h.getUint32(24,true),glyphs*8]];
     let total = 0;
     for(let i=0;i<maps;i++){const n=h.getUint32(40+i*8,true);entries.push([h.getUint32(36+i*8,true),n*2]);total+=n;}
@@ -148,7 +151,10 @@ async function validatePetPack(data: Uint8Array, catalog: ObjectValue, app: Uint
     let end = 64;
     for(const [at,n] of entries){require(at === ((end+3)&~3) && n>0 && at+n<=font.length &&
       font.subarray(end,at).every(b=>b===255),"body font section bounds");end=at+n;}
-    require(end===font.length,"body font trailing bytes");
+    if (h.getUint32(4,true)===2) {
+      const at=h.getUint32(60,true);
+      require(at===((end+3)&~3) && at+24<=font.length && ascii(font,at,4)==="KOR1","Korean font bounds");
+    } else require(end===font.length,"body font trailing bytes");
     require(meta.format === "BDF1" && meta.offset_in_partition === 0x10000 && meta.bytes === font.length &&
       meta.sha256 === fontDigest && Object.keys(meta).length === 4,"body font catalog mismatch");
     require(contains(app,terminated(ENCODER.encode(`BODYFONT-SHA256:${fontDigest}`))),"应用与 body font 指纹不匹配");
@@ -164,7 +170,7 @@ async function validatePetPack(data: Uint8Array, catalog: ObjectValue, app: Uint
   require(crc32(data.subarray(64, base)) === v.getUint32(28, true) &&
     crc32(data.subarray(base)) === v.getUint32(32, true), "petart.bin CRC 错误");
   const records = array(catalog.sprites, "petart_catalog sprites");
-  require(catalog.format === "PTP1" && catalog.version === 1 && catalog.offset === 0x500000 && catalog.capacity === 0x100000 &&
+  require(catalog.format === "PTP1" && catalog.version === 1 && catalog.offset === 0x500000 && catalog.capacity === capacity &&
     catalog.bytes === data.length && catalog.count === count && catalog.sha256 === digest && records.length === count,
     "petart catalog 与图包不匹配");
   let end = base, lastId = -1;
@@ -216,21 +222,23 @@ export async function loadRelease(file: File): Promise<LoadedRelease> {
   const json = (name: string) => object(JSON.parse(DECODER.decode(payload[name])), name);
   const manifest = json("firmware-manifest.json"), entries = array(manifest.segments, "manifest segments");
   require(manifest.package_type === "explicit-flash-segments" && entries.length === segments.length, "manifest 必须声明全部显式段");
+  const themes = /^2\.1\.0-xiaozhi\.(\d+)$/.exec(String(manifest.version));
+  const themeLayout = !!themes && Number(themes[1]) >= 15;
   const files: FirmwareFile[] = [];
   segments.forEach(([name, filename, address, limit], index) => {
     const data = payload[filename], entry = object(entries[index], "manifest segment");
     const eraseStart = Math.floor(address / 4096) * 4096, eraseEnd = Math.ceil((address + data.length) / 4096) * 4096;
-    require(data.length > 0 && eraseStart >= address && eraseEnd <= limit, `${filename} 写入/擦除范围超出允许分区`);
+    require(data.length > 0 && eraseStart >= address && eraseEnd <= (themeLayout && name === "petart" ? 0x5e9000 : themeLayout && name === "imgava" ? 0x41a000 : limit), `${filename} 写入/擦除范围超出允许分区`);
     require(entry.name === name && entry.file === filename && entry.offset === address && entry.size === data.length &&
       entry.end === address + data.length && entry.erase_start === eraseStart && entry.erase_end === eraseEnd &&
       entry.sha256 === hashes[filename], `manifest segment 不匹配: ${filename}`);
     files.push({name: filename, address, data});
   });
-  validatePartitions(payload["partition-table.bin"], hasCompanion);
+  validatePartitions(payload["partition-table.bin"], hasCompanion, themeLayout);
   const app = payload["trae_card.bin"], pet = payload["petart.bin"], avatar = payload["imgava.bin"];
   require(payload["bootloader.bin"][0] === 0xe9 && app[0] === 0xe9, "bootloader/app 不是 ESP 镜像");
-  require(avatar.length === 0x100000 && ascii(avatar, 0, 4) === "AVA1", "imgava.bin 头/长度无效");
-  const count = await validatePetPack(pet, json("petart_catalog.json"), app, hashes["petart.bin"]);
+  require(avatar.length === (themeLayout?0x20000:0x100000) && ascii(avatar, 0, 4) === "AVA1", "imgava.bin 头/长度无效");
+  const count = await validatePetPack(pet, json("petart_catalog.json"), app, hashes["petart.bin"], themeLayout ? 0xe9000 : 0x100000);
   const fontMeta = json("petart_catalog.json").body_font;
   if(fontMeta !== undefined){
     const expected = {...object(fontMeta,"body font"),file:"petart.bin",offset:0x510000};
@@ -251,7 +259,7 @@ export async function loadRelease(file: File): Promise<LoadedRelease> {
   const petMeta = object(shared ? manifest.shared_game_art : manifest.pet_art, "manifest shared/pet art"), standalone = object(manifest.standalone_application, "standalone app");
   if (shared) require(JSON.stringify(petMeta.uses) === JSON.stringify(["dodge", "home-avatar"]), "shared game art uses mismatch");
   require(petMeta.file === "petart.bin" && petMeta.catalog === "petart_catalog.json" && petMeta.format === "PTP1" &&
-    petMeta.offset === 0x500000 && petMeta.capacity === 0x100000 && petMeta.count === count && petMeta.bytes === pet.length &&
+    petMeta.offset === 0x500000 && petMeta.capacity === (themeLayout ? 0xe9000 : 0x100000) && petMeta.count === count && petMeta.bytes === pet.length &&
     petMeta.sha256 === hashes["petart.bin"], "manifest pet_art 不匹配");
   if (shared) require(!("requires_matching_pet_art" in standalone), "shared game art must replace pet requirement");
   const matching = object(shared ? standalone.requires_matching_shared_game_art : standalone.requires_matching_pet_art, "standalone matching shared/pet art");

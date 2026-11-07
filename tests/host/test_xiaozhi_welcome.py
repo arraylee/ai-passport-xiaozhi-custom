@@ -62,14 +62,15 @@ int main(int argc,char **argv){
 class WelcomeTest(unittest.TestCase):
     def test_wait_prompt_and_button(self):
         import os
-        xz=ROOT/'components/platform/xiaozhi'; source=(xz/'xiaozhi.c').read_text(); asset=xz/'welcome_zh.pcm'
+        xz=ROOT/'components/platform/xiaozhi'; source=(xz/'xiaozhi.c').read_text(); asset=xz/'welcome_zh.rice'
         real='\n'.join(function(source,n) for n in ('xiaozhi_welcome_shown','xiaozhi_begin_setup','xz_wait_for_setup'))
         with tempfile.TemporaryDirectory() as directory:
             tmp=Path(directory); c=tmp/'main.c'; obj=tmp/'clip.S'; binary=tmp/'test'
-            c.write_text(BOUNDARY+real+CASES.replace('EXPECTED_SAMPLES',str(asset.stat().st_size//2)))
-            obj.write_text('.text\n.globl _binary_welcome_zh_pcm_start\n.globl _binary_welcome_zh_pcm_end\n_binary_welcome_zh_pcm_start:\n.incbin "'+str(asset)+'"\n_binary_welcome_zh_pcm_end:\n')
+            c.write_text(BOUNDARY+real+CASES.replace('EXPECTED_SAMPLES',str((xz/'welcome_zh.pcm').stat().st_size//2)))
+            obj.write_text('.text\n.globl _binary_welcome_zh_rice_start\n.globl _binary_welcome_zh_rice_end\n_binary_welcome_zh_rice_start:\n.incbin "'+str(asset)+'"\n_binary_welcome_zh_rice_end:\n')
             services=ROOT/'components/core/services'
             subprocess.run(['cc','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-variable','-fsanitize=undefined','-I'+str(xz),'-I'+str(xz/'include'),'-I'+str(ROOT/'components/core/ports/include'),'-I'+str(services/'include'),str(c),str(obj),str(xz/'xz_prompt.c'),str(services/'src/adpcm.c'),'-o',str(binary)],check=True)
-            dump=os.environ.get('PASSPORT_WELCOME_TEST_PCM');subprocess.run([str(binary)]+([dump] if dump else []),check=True,timeout=5)
+            dump=Path(os.environ.get('PASSPORT_WELCOME_TEST_PCM',tmp/'decoded.pcm'));subprocess.run([str(binary),str(dump)],check=True,timeout=5)
+            self.assertEqual(dump.read_bytes(),(xz/'welcome_zh.pcm').read_bytes())
 
 if __name__=='__main__':unittest.main()

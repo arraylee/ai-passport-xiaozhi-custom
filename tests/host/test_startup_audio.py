@@ -27,7 +27,7 @@ static size_t xz_play_pcm_prompt(void*c,const atomic_bool*a,const atomic_bool*b,
  assert(c==&config&&!atomic_load(a)&&!atomic_load(b)&&n==80&&p[0]==0x31&&p[n-1]==0x31);atomic_store(&setup_confirmed,true);return n/2;
 }
 static void publish(int phase,const char*s){assert(phase==1&&!s[0]);}
-__asm__(".data\n.globl _binary_welcome_zh_pcm_start\n_binary_welcome_zh_pcm_start:\n.space 80,0x31\n.globl _binary_welcome_zh_pcm_end\n_binary_welcome_zh_pcm_end:\n.globl _binary_startup_magicbox_adpcm_start\n_binary_startup_magicbox_adpcm_start:\n.space 25251,0x7d\n.globl _binary_startup_magicbox_adpcm_end\n_binary_startup_magicbox_adpcm_end:\n");
+__asm__(".data\n.globl _binary_welcome_zh_rice_start\n_binary_welcome_zh_rice_start:\n.space 80,0x31\n.globl _binary_welcome_zh_rice_end\n_binary_welcome_zh_rice_end:\n.globl _binary_startup_magicbox_adpcm_start\n_binary_startup_magicbox_adpcm_start:\n.space 25251,0x7d\n.globl _binary_startup_magicbox_adpcm_end\n_binary_startup_magicbox_adpcm_end:\n");
 '''
   code=boundary+function(s,'xz_wait_for_setup')+'\n'+function(s,'xiaozhi_play_startup_sound')+r'''
 int main(void){atomic_bool stop=false;assert(xiaozhi_play_startup_sound()==50502);assert(xz_wait_for_setup(&stop,publish));running=true;assert(!xiaozhi_play_startup_sound());return 0;}

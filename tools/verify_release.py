@@ -4,6 +4,7 @@
 import argparse
 import hashlib
 import json
+import re
 import sys
 import tempfile
 import zipfile
@@ -20,8 +21,8 @@ EXPECTED_SEGMENTS = (
     ("bootloader", "bootloader.bin", 0x000000, 0x000000, 0x008000),
     ("partition-table", "partition-table.bin", 0x008000, 0x008000, 0x009000),
     ("factory", "trae_card.bin", 0x010000, 0x010000, 0x310000),
-    ("imgava", "imgava.bin", 0x3FA000, 0x3FA000, 0x4FA000),
-    ("petart", "petart.bin", 0x500000, 0x500000, 0x600000),
+    ("imgava", "imgava.bin", 0x3FA000, 0x3FA000, 0x41A000),
+    ("petart", "petart.bin", 0x500000, 0x500000, 0x5E9000),
     ("companion", "companion.bin", 0x600000, 0x600000, 0x800000),
 )
 REQUIRED_METADATA = {
@@ -72,6 +73,20 @@ def verify_archive(archive_path, build_dir=None, standalone_app=None):
         raise RuntimeError(f"release JSON 无效: {exc}") from exc
     if manifest.get("package_type") != "explicit-flash-segments":
         raise RuntimeError("firmware-manifest.json package_type 错误")
+    revision = re.fullmatch(r"2\.1\.0-xiaozhi\.(\d+)", str(manifest.get("version", "")))
+    legacy = bool(revision and int(revision[1]) < 15)
+    limits = list(EXPECTED_SEGMENTS)
+    partitions = release.EXPECTED_PARTITIONS
+    if legacy:
+        limits[3] = (*limits[3][:-1], 0x4fa000)
+        limits[4] = (*limits[4][:-1], 0x600000)
+        partitions = (*partitions[:8], ("imgava",1,0x82,0x3fa000,0x100000),
+                      ("petart",1,0x40,0x500000,0x100000), partitions[-1])
+    elif revision:
+        if not all(payload.get(name) == (ROOT / "assets/licenses" / name).read_bytes() for name in release.THEME_NOTICES):
+            raise RuntimeError("主题或语言素材缺少来源和许可")
+        if not all(key in manifest for key in ("welcome_audio","farewell_audio","startup_audio")):
+            raise RuntimeError("缺少内置录音")
     release.validate_font_license_payload(payload, payload["trae_card.bin"])
     release.validate_library_license_payload(payload)
     if str(manifest.get("version", "")).startswith("2.1.0-xiaozhi.") and int(manifest["version"].rsplit(".", 1)[1]) >= 11 and "startup_audio" not in manifest:
@@ -81,7 +96,7 @@ def verify_archive(archive_path, build_dir=None, standalone_app=None):
             continue
         entry = manifest[key]
         allowed_formats = [("IMA-ADPCM", 16000)]
-        if key == "welcome_audio": allowed_formats.append(("PCM-S16LE", 24000))
+        if key == "welcome_audio": allowed_formats.extend([("PCM-S16LE", 24000), ("Rice-PCM-S16LE", 24000)])
         if (not isinstance(entry, dict) or (entry.get("format"), entry.get("sample_rate")) not in allowed_formats
                 or entry.get("notice") != notice or not payload.get(notice)):
             raise RuntimeError(f"{key} 语音格式或来源说明无效")
@@ -107,6 +122,8 @@ def verify_archive(archive_path, build_dir=None, standalone_app=None):
     release.validate_companion_payload(payload["companion.bin"], payload["trae_card.bin"])
     pet_catalog = release.validate_pet_art_payload(
         payload["petart.bin"], payload["petart_catalog.json"], payload["trae_card.bin"])
+    if pet_catalog["capacity"] != limits[4][4] - limits[4][3]:
+        raise RuntimeError("共享素材目录与实际分区容量不一致")
     shared = "shared_game_art" in manifest
     if shared:
         if manifest.get("features") != {"pet": False} or "pet_art" in manifest:
@@ -125,7 +142,7 @@ def verify_archive(archive_path, build_dir=None, standalone_app=None):
     if manifest.get('body_font') != expected_body:
         raise RuntimeError('manifest body font metadata mismatch')
     if (pet_meta.get("file") != "petart.bin" or pet_meta.get("offset") != 0x500000
-            or pet_meta.get("capacity") != 0x100000 or pet_meta.get("format") != "PTP1"
+            or pet_meta.get("capacity") != limits[4][4] - limits[4][3] or pet_meta.get("format") != "PTP1"
             or pet_meta.get("count") != pet_catalog["count"]
             or pet_meta.get("bytes") != len(payload["petart.bin"])
             or pet_meta.get("sha256") != _digest(payload["petart.bin"])):
@@ -142,7 +159,7 @@ def verify_archive(archive_path, build_dir=None, standalone_app=None):
     if standalone.get("complete_flash_image") is not False:
         raise RuntimeError("standalone app is not a complete flash image")
     expected_flash = {}
-    for item, expected in zip(segments, EXPECTED_SEGMENTS):
+    for item, expected in zip(segments, limits):
         name, file_name, offset, region_start, region_end = expected
         if (item.get("name"), item.get("file"), item.get("offset")) != (
                 name, file_name, offset):
@@ -179,7 +196,7 @@ def verify_archive(archive_path, build_dir=None, standalone_app=None):
     with tempfile.TemporaryDirectory() as tmp:
         table_path = Path(tmp) / "partition-table.bin"
         table_path.write_bytes(payload["partition-table.bin"])
-        release._validate_partition_table(table_path)
+        release._validate_partition_table(table_path, partitions)
 
     if build_dir is not None:
         build_dir = Path(build_dir)

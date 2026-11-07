@@ -15,6 +15,9 @@
 #include "mqtt_client.h"
 #include "nvs.h"
 #include "xz_network.h"
+#include "xz_theme.h"
+#include "xz_mcp.h"
+#include "esp_system.h"
 #include "xz_cloud_cache.h"
 #include "xz_quiet.h"
 #include "xz_prompt.h"
@@ -31,7 +34,7 @@ static atomic_bool running, cancel, requested_talk;
 static atomic_bool requested_interrupt, natural_interrupt;
 static atomic_bool requested_end, requested_resume;
 static atomic_bool welcome_visible, setup_confirmed;
-typedef enum { SESSION_CLOSED, SESSION_PARK, SESSION_RENEW, SESSION_QUIET_BYE, SESSION_INTENT_BYE, SESSION_AUDIO_LOST } session_end_t;
+typedef enum { SESSION_CLOSED, SESSION_PARK, SESSION_RENEW, SESSION_QUIET_BYE, SESSION_INTENT_BYE, SESSION_AUDIO_LOST, SESSION_THEME_FAILED } session_end_t;
 static atomic_bool worker_finished;
 // Owned by the existing plays worker, which also creates/deletes voice_task.
 static TaskHandle_t voice_task;
@@ -84,7 +87,7 @@ static void status(xz_phase_t phase, const char *detail) {
   else if (phase == XZ_BIND) working.stage = XZ_STAGE_BIND;
   else if (phase == XZ_READY || phase == XZ_LISTEN || phase == XZ_THINK || phase == XZ_SPEAK)
     working.stage = XZ_STAGE_VOICE;
-  xz_text_copy(working.detail, sizeof working.detail, detail);
+  if (detail != working.detail) xz_text_copy(working.detail, sizeof working.detail, detail);
   working.avatar = atomic_load(&avatar);
   working.revision++;
   taskENTER_CRITICAL(&guard);
@@ -112,8 +115,8 @@ bool xiaozhi_output_active(void) { return hal_audio_output_active(config.audio);
 void xiaozhi_welcome_shown(void) { atomic_store(&welcome_visible, true); }
 void xiaozhi_begin_setup(void) { atomic_store(&setup_confirmed, true); }
 bool xz_wait_for_setup(atomic_bool *stop, xz_status_fn publish) {
-  extern const uint8_t start[] asm("_binary_welcome_zh_pcm_start");
-  extern const uint8_t end[] asm("_binary_welcome_zh_pcm_end");
+  extern const uint8_t start[] asm("_binary_welcome_zh_rice_start");
+  extern const uint8_t end[] asm("_binary_welcome_zh_rice_end");
   publish(XZ_WELCOME, "");
   while (!atomic_load(&welcome_visible) && !atomic_load(&setup_confirmed) && !atomic_load(stop))
     vTaskDelay(pdMS_TO_TICKS(20));
@@ -132,7 +135,7 @@ void xiaozhi_init(const xz_config_t *c) {
     nvs_get_u8(h, "natural", &natural);
     nvs_close(h);
   }
-  atomic_store(&avatar, value < 2 ? value : 0);
+  atomic_store(&avatar, value < XZ_AVATARS ? value : 0);
   atomic_store(&natural_interrupt, natural == 1);
 }
 bool xiaozhi_set_natural_interrupt(bool enabled) {
@@ -149,7 +152,7 @@ bool xiaozhi_set_volume(unsigned volume) {
   return volume <= 100 && config.set_volume && config.set_volume(config.user, volume);
 }
 void xiaozhi_avatar(unsigned index) {
-  if (index < 2)
+  if (index < XZ_AVATARS)
     atomic_store(&avatar, index);
 }
 void xiaozhi_talk(void) {
@@ -178,7 +181,7 @@ typedef struct {
   esp_mqtt_client_handle_t mqtt;
   channel_message_t *partial, *first, *last;
   size_t queued_bytes;
-  atomic_bool connected, failed, control_ready;
+  atomic_bool connected, failed, control_ready, closing;
   atomic_int error, suback_id;
   char topic[256], session[128];
   int udp, rate;
@@ -307,8 +310,12 @@ static void mqtt_event(void *arg, esp_event_base_t base, int32_t event,
   if (event == MQTT_EVENT_CONNECTED) {
     // A terminal disconnect/error wins over a late CONNECTED event; this client
     // has auto-reconnect disabled and will be stopped/destroyed by the caller.
-    if (!atomic_load(&cancel) && !atomic_load(&c->failed))
+    if (!atomic_load(&cancel) && !atomic_load(&c->failed) && !atomic_load(&c->closing)) {
+      // The broker can deliver MCP initialize immediately after CONNACK, before
+      // the voice worker wakes up or sends hello. Queue it on this callback.
+      atomic_store(&c->control_ready, true);
       atomic_store(&c->connected, true);
+    }
   } else if (event == MQTT_EVENT_SUBSCRIBED && e) {
     if (e->error_handle && e->error_handle->error_type == MQTT_ERROR_TYPE_SUBSCRIBE_FAILED) {
       atomic_store(&c->error, CHANNEL_SUBSCRIBE);
@@ -331,7 +338,7 @@ static void mqtt_event(void *arg, esp_event_base_t base, int32_t event,
     atomic_store(&c->connected, false);
     atomic_store(&c->failed, true);
   } else if (event == MQTT_EVENT_DATA && !atomic_load(&cancel) &&
-             !atomic_load(&c->failed) && atomic_load(&c->control_ready)) {
+             !atomic_load(&c->failed) && !atomic_load(&c->closing) && atomic_load(&c->control_ready)) {
     channel_push(c, e->data, e->data_len, e->current_data_offset, e->total_data_len);
   }
 }
@@ -346,6 +353,16 @@ static bool string_field(const cJSON *obj, const char *name, char *out,
 static bool send_text(channel_t *c, const char *text) {
   return c->mqtt && !atomic_load(&c->failed) && atomic_load(&c->connected) &&
          esp_mqtt_client_publish(c->mqtt, c->topic, text, 0, 0, 0) >= 0;
+}
+static void handle_mcp(channel_t *c, const cJSON *j) {
+  const cJSON *sid = cJSON_GetObjectItemCaseSensitive(j, "session_id");
+  if (sid && !cJSON_IsString(sid)) return;
+  const char *session=cJSON_IsString(sid)?sid->valuestring:c->session;
+  if (strlen(session)>=sizeof c->session || (c->session[0] && session[0] && strcmp(c->session,session))) return;
+  xz_mcp_device_t device={xz_theme_queue_url,xz_theme_queue_reboot,xz_theme_set_dark,
+      XZ_CONSOLE_VERSION,xz_theme_address(),XZ_THEME_LIMIT};
+  char *reply=xz_mcp_reply(cJSON_GetObjectItemCaseSensitive(j,"payload"),session,&config,&device);
+  if (reply) { (void)send_text(c,reply); cJSON_free(reply); }
 }
 static bool command(channel_t *c, const char *type, const char *state) {
   cJSON *j = cJSON_CreateObject();
@@ -478,7 +495,6 @@ static bool open_channel(channel_t *c, cJSON **cloud) {
            (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
   codec_arena_metric(4);
   if (atomic_load(&cancel) || atomic_load(&c->failed)) return false;
-  atomic_store(&c->control_ready,true);
   if (subscribe[0]) {
     atomic_store(&c->suback_id, -1);
     int subscription = esp_mqtt_client_subscribe(c->mqtt, subscribe, 0);
@@ -498,7 +514,7 @@ static bool open_channel(channel_t *c, cJSON **cloud) {
   if (atomic_load(&cancel) || atomic_load(&c->failed)) return false;
   if (!send_text(
           c, "{\"type\":\"hello\",\"version\":3,\"transport\":\"udp\","
-             "\"features\":{},\"audio_params\":{\"format\":\"opus\",\"sample_"
+             "\"features\":{\"mcp\":true},\"audio_params\":{\"format\":\"opus\",\"sample_"
              "rate\":16000,\"channels\":1,\"frame_duration\":60}}")) {
     atomic_store(&c->error,CHANNEL_HELLO_SEND);
     return false;
@@ -516,6 +532,7 @@ static bool open_channel(channel_t *c, cJSON **cloud) {
       break;
     }
     cJSON *t = cJSON_GetObjectItem(j, "type");
+    if (cJSON_IsString(t) && !strcmp(t->valuestring,"mcp")) handle_mcp(c,j);
     if (cJSON_IsString(t) && !strcmp(t->valuestring, "hello")) {
       ok = hello(c, j);
       if(!ok)atomic_store(&c->error,CHANNEL_HELLO_INVALID);
@@ -531,6 +548,7 @@ static bool open_channel(channel_t *c, cJSON **cloud) {
 }
 static void channel_release(channel_t *c, bool notify_peer) {
   if (!c) return;
+  atomic_store(&c->closing,true);
   atomic_store(&c->control_ready,false);
   if (c->mqtt) {
     if (notify_peer && atomic_load(&c->connected)) command(c,"goodbye",NULL);
@@ -876,6 +894,19 @@ static session_end_t run_session(bool *wifi_up, xz_quiet_t *quiet, unsigned *mis
   bool tts_stop = false, tts_text = false, encoder_measured = false;
   uint32_t tts_received = 0, tts_valid = 0, tts_written = 0;
   working.stage = XZ_STAGE_VOICE;
+  if (xz_theme_pending_boot()) {
+    if (!*wifi_up && !xz_wifi_open(setup_requested,&cancel,status,working.hotspot,working.password)) goto finish;
+    *wifi_up=true; warm=true; setup_requested=false; working.wifi_saved=true;
+    status(XZ_CLOUD,"正在下载官方主题");
+    if (xz_cloud_time_ready(&cancel,status) && xz_theme_download(&cancel)) {
+      persist_avatar(XZ_OFFICIAL_AVATAR);
+      esp_restart();
+    }
+    if (atomic_load(&cancel)) goto finish;
+    if (xz_theme_pending_boot()) xz_theme_cancel_download();
+    status(XZ_STANDBY,"主题下载失败，按对话继续");
+    outcome=SESSION_THEME_FAILED; goto finish;
+  }
   if (!xz_codec_memory_begin()) {
     codec_arena_metric(0);
     status(XZ_ERROR, "语音内存不足，请返回后重试"); goto finish;
@@ -909,6 +940,11 @@ static session_end_t run_session(bool *wifi_up, xz_quiet_t *quiet, unsigned *mis
   if (cloud_cached) {
     working.code[0]=0;
     if (!xz_cloud_time_ready(&cancel,warm ? reconnect_status : status)) goto finish;
+    cloud = xz_cloud_refresh_version(cloud, &cancel);
+    if (!cloud && !atomic_load(&cancel)) {
+      cloud_cached = false;
+      cloud = xz_cloud_config(&cancel, warm ? reconnect_status : status, working.code);
+    }
   } else cloud = xz_cloud_config(&cancel, warm ? reconnect_status : status, working.code);
   codec_arena_metric(3);
   if (!cloud || atomic_load(&cancel))
@@ -982,7 +1018,13 @@ static session_end_t run_session(bool *wifi_up, xz_quiet_t *quiet, unsigned *mis
             *state = cJSON_GetObjectItem(j, "state"),
             *line = cJSON_GetObjectItem(j, "text");
       if (cJSON_IsString(type)) {
-        if (!strcmp(type->valuestring, "tts") && cJSON_IsString(state)) {
+        if (!strcmp(type->valuestring,"mcp")) {
+          handle_mcp(c,j);
+        } else if (!strcmp(type->valuestring,"llm")) {
+          cJSON *e=cJSON_GetObjectItemCaseSensitive(j,"emotion");
+          int emotion=cJSON_IsString(e)?xz_emotion_index(e->valuestring):-1;
+          if (emotion>=0) {working.emotion=(unsigned)emotion; status(working.phase,working.detail);}
+        } else if (!strcmp(type->valuestring, "tts") && cJSON_IsString(state)) {
           /* MQTT is ordered but the old reply's stop/start may already be in
            * flight at abort. Only a new recognized utterance opens its reply. */
           if (ignore_aborted_tts) { cJSON_Delete(j); continue; }
@@ -1041,6 +1083,10 @@ static session_end_t run_session(bool *wifi_up, xz_quiet_t *quiet, unsigned *mis
         }
       }
       cJSON_Delete(j);
+    }
+    if (xz_theme_reboot_requested()) {
+      vTaskDelay(pdMS_TO_TICKS(200));
+      esp_restart();
     }
     if (outcome != SESSION_CLOSED || working.phase == XZ_ERROR || atomic_load(&cancel)) break;
     if (atomic_load(&requested_end)) continue;
@@ -1337,6 +1383,7 @@ static size_t play_farewell_prompt(void) {
 
 static void run(void *arg) {
   (void)arg;
+  xz_theme_boot();
   bool wifi_up = false;
   unsigned rapid_closes = 0, missing_replies = 0;
   xz_quiet_t quiet = {0};
@@ -1347,7 +1394,7 @@ static void run(void *arg) {
     if (!wifi_up || working.phase == XZ_ERROR) break;
     if (atomic_exchange(&requested_end, false)) reason = SESSION_PARK;
     if (reason == SESSION_CLOSED) break;
-    const char *idle_text = "按对话开始聊天";
+    const char *idle_text = reason==SESSION_THEME_FAILED?"主题未安装，按对话继续":"按对话开始聊天";
     // Closing a cloud stream does not end our listening window. Only a peer
     // that repeatedly closes immediately enters the recoverable network state.
     if (reason == SESSION_AUDIO_LOST) {

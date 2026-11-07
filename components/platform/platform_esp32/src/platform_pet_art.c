@@ -14,7 +14,7 @@ bool platform_pet_art_map(const void **data, size_t *size) {
     *data = NULL; *size = 0;
     if (mapped) { *data = mapped; *size = mapped_size; return true; }
     const esp_partition_t *part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, 0x40, "petart");
-    if (!part || part->address != 0x500000 || part->size != 0x100000 || part->encrypted || !part->readonly) {
+    if (!part || part->address != 0x500000 || part->size != 0xe9000 || part->encrypted || !part->readonly) {
         ESP_LOGW(TAG, "Missing or incompatible petart partition"); return false;
     }
     uint8_t header[64];

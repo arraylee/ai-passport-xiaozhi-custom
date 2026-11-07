@@ -183,6 +183,7 @@ static bool xz_wifi_open(bool setup,atomic_bool *c,void (*status)(xz_phase_t,con
     return true;
 }
 static cJSON *xz_cloud_cache_load(void){return NULL;}
+static cJSON *xz_cloud_refresh_version(cJSON *cached,const atomic_bool *c){(void)c;return cached;}
 static bool xz_cloud_time_ready(atomic_bool *c,void (*fn)(xz_phase_t,const char *)){(void)fn;return !atomic_load(c);}
 static cJSON *xz_cloud_config(atomic_bool *c,void (*status)(xz_phase_t,const char *),char *code) {
     (void)c;

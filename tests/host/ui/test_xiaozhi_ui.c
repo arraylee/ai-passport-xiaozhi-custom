@@ -272,11 +272,26 @@ int main(void){
     ui_xiaozhi_update(&v,&face_art);settle();
     assert(ui_xiaozhi_key(UI_PLAY_OK,&avatar)==UI_XZ_RETRY);
     ui_xiaozhi_close();v.phase=XZ_READY;
+    extern void native_official_install(bool);
     for(unsigned cycle=0;cycle<101;cycle++){
+        native_official_install(cycle%2);
         ui_xiaozhi_open(&v,&face_art);settle();assert(ui_xiaozhi_key(UI_PLAY_OK,&avatar)==UI_XZ_TALK);
         ui_xiaozhi_key(UI_PLAY_DOWN,&avatar);ui_xiaozhi_key(UI_PLAY_OK,&avatar);settle();
         assert(ui_xiaozhi_key(UI_PLAY_DOWN,&avatar)==UI_XZ_AVATAR&&avatar==1);
-        v.avatar=avatar;v.revision++;ui_xiaozhi_update(&v,&face_art);settle();ui_xiaozhi_key(UI_PLAY_OK,&avatar);
+        v.avatar=avatar;v.revision++;ui_xiaozhi_update(&v,&face_art);settle();
+        assert(ui_xiaozhi_key(UI_PLAY_DOWN,&avatar)==UI_XZ_AVATAR&&avatar==2);
+        v.avatar=avatar;v.revision++;ui_xiaozhi_update(&v,NULL);settle();
+        assert(has_text(lv_screen_active(),"官方主题"));
+        lv_obj_t *icon=find_face(lv_screen_active());assert(icon);
+        assert(lv_obj_get_parent(icon)==lv_screen_active());
+        lv_area_t icon_bounds;lv_obj_get_coords(icon,&icon_bounds);
+        assert(icon_bounds.x1==104 && icon_bounds.y1==122);
+        assert(lv_obj_get_width(icon)==32 && lv_obj_get_height(icon)==32);
+        assert(lv_image_get_scale_x(icon)==256 && lv_image_get_scale_y(icon)==256);
+        assert(ui_xiaozhi_key(UI_PLAY_UP,&avatar)==UI_XZ_AVATAR&&avatar==1);
+        v.avatar=avatar;ui_xiaozhi_update(&v,&face_art);settle();
+        assert(ui_xiaozhi_key(UI_PLAY_DOWN,&avatar)==UI_XZ_AVATAR&&avatar==2);
+        v.avatar=avatar;ui_xiaozhi_update(&v,NULL);settle();ui_xiaozhi_key(UI_PLAY_OK,&avatar);
         ui_xiaozhi_key(UI_PLAY_DOWN,&avatar);ui_xiaozhi_key(UI_PLAY_OK,&avatar);settle();
         ui_xiaozhi_key(UI_PLAY_UP,&avatar);assert(ui_xiaozhi_key(UI_PLAY_OK,&avatar)==UI_XZ_NONE);
         ui_xiaozhi_close();settle();assert(lv_screen_active()==home);

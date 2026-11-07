@@ -26,7 +26,7 @@ typedef enum { XZ_STAGE_WIFI, XZ_STAGE_CLOUD, XZ_STAGE_BIND,
 typedef struct {
   xz_phase_t phase;
   xz_stage_t stage;
-  unsigned avatar, revision;
+  unsigned avatar, revision, emotion;
   bool restart_required, wifi_saved;
   bool natural_interrupt, output_active;
   unsigned volume;
@@ -41,6 +41,8 @@ typedef struct {
   unsigned (*get_volume)(void *);
   bool (*set_volume)(void *, unsigned);
   void *user;
+  unsigned (*get_brightness)(void *);
+  bool (*set_brightness)(void *, unsigned);
   bool (*portal_activity)(void);
 } xz_config_t;
 // Cold-boot only, before the networking worker starts. Streams one DMA block.

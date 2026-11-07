@@ -179,6 +179,7 @@ static void publish_gamescore(void) {
 }
 // 供 provision_console 在 AT+CARDID= 写入成功后回调,刷新 BLE 身份 blob。
 static void on_identity_changed(void *user) { (void)user; publish_identity(); }
+static atomic_flag preference_busy = ATOMIC_FLAG_INIT;
 static bool save_profile(void) {
     if (!s_kv) return false;
     uint8_t blob[PROFILE_BLOB_SIZE];
@@ -1231,7 +1232,7 @@ static unsigned plays_get_volume(void *user) {
     (void)user;
     return s_profile.volume;
 }
-static bool plays_set_volume(void *user, unsigned volume) {
+static bool apply_volume(void *user, unsigned volume) {
     (void)user;
     if (volume > 100) return false;
     if (volume == s_profile.volume) return true;
@@ -1243,6 +1244,10 @@ static bool plays_set_volume(void *user, unsigned volume) {
     }
     audio_service_set_volume(&s_au, volume);
     return true;
+}
+static bool plays_set_volume(void *user,unsigned value) {
+    if(atomic_flag_test_and_set(&preference_busy))return false;
+    bool ok=apply_volume(user,value);atomic_flag_clear(&preference_busy);return ok;
 }
 static bool plays_acquire_audio(void *user) {
     (void)user;
@@ -1299,7 +1304,7 @@ static bool plays_preview_brightness(void *user, unsigned brightness) {
     return false;
 #endif
 }
-static bool plays_set_brightness(void *user, unsigned brightness) {
+static bool apply_brightness(void *user, unsigned brightness) {
     if (brightness < BRIGHTNESS_MIN || brightness > 100) return false;
     int previous = s_profile.brightness;
     if (!plays_preview_brightness(user, brightness)) return false;
@@ -1311,6 +1316,10 @@ static bool plays_set_brightness(void *user, unsigned brightness) {
         return false;
     }
     return true;
+}
+static bool plays_set_brightness(void *user,unsigned value) {
+    if(atomic_flag_test_and_set(&preference_busy))return false;
+    bool ok=apply_brightness(user,value);atomic_flag_clear(&preference_busy);return ok;
 }
 static unsigned plays_get_sleep_minutes(void *user) {
     (void)user;

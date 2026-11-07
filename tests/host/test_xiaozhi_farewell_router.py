@@ -37,6 +37,7 @@ static void status(int p,const char *s){
 static size_t play_farewell_prompt(void){assert(!live&&link&&working.phase==XZ_FAREWELL);prompts++;if(scenario==3)cancel=true;return scenario==4?0:11628;}
 static void xz_wifi_idle_power(bool idle){assert(idle&&link&&!live);}
 static void xz_wifi_close(void){assert(link);link=false;closed++;}
+static void xz_theme_boot(void){}
 static void persist_avatar(unsigned n){(void)n;}
 static void finish_status(void){assert(!link&&!live);}
 static void vTaskSuspend(void *p){(void)p;longjmp(exit_worker,1);}

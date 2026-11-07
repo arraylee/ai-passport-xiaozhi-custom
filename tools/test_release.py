@@ -19,8 +19,10 @@ EXPECTED_PARTITIONS = (
     ("cardid", 0x01, 0x02, 0x356000, 0x004000),
     ("imguser", 0x01, 0x82, 0x35A000, 0x020000),
     ("audio", 0x01, 0x82, 0x37A000, 0x080000),
-    ("imgava", 0x01, 0x82, 0x3FA000, 0x100000),
-    ("petart", 0x01, 0x40, 0x500000, 0x100000),
+    ("imgava", 0x01, 0x82, 0x3FA000, 0x020000),
+    ("assets", 0x01, 0x82, 0x41A000, 0x0E6000),
+    ("petart", 0x01, 0x40, 0x500000, 0x0E9000),
+    ("theme_cache", 0x01, 0x42, 0x5E9000, 0x017000),
     ("companion", 0x01, 0x41, 0x600000, 0x200000),
 )
 
@@ -43,6 +45,7 @@ def write_fixture(root):
     notice = (release.ROOT / "assets/fonts/FONT-LICENSES.txt").read_bytes()
     sprite = b"PSR1\1\0\0\0" + b"\0\0\0\xff" + b"\0\0\2\0" + b"\x80\0"
     pet_data, pet_catalog = pet_art_pack.build_pack([(name, 1, 1, sprite) for name in pet_art_pack.SHARED_GAME_SYMBOLS])
+    pet_catalog['capacity'] = 0xe9000
     (build / "petart.bin").write_bytes(pet_data)
     (build / "petart_catalog.json").write_text(json.dumps(pet_catalog))
     companion = bytearray(128)
@@ -59,7 +62,7 @@ def write_fixture(root):
     (build / "companion" / "companion.bin").write_bytes(companion)
     fingerprint = pet_art_pack.fingerprint(pet_data).encode() + b"\0" + companion_fingerprint
     (build / "trae_card.bin").write_bytes(b"\xe9" + b"A" * 0x1FFFF + notice + b"\0" + fingerprint)
-    (build / "imgava.bin").write_bytes(b"AVA1" + b"\xff" * (0x100000 - 4))
+    (build / "imgava.bin").write_bytes(b"AVA1" + b"\xff" * (0x20000 - 4))
     (build / "avatar_catalog.json").write_text('{"avatars": []}\n', encoding="utf-8")
     (build / "project_description.json").write_text(json.dumps({
         "project_version": "1.2.0",
@@ -259,7 +262,7 @@ class ReleaseValidationTests(unittest.TestCase):
             segments = release.validate_release_inputs(write_fixture(tmp), "trae_card.bin")
             pet = segments[4]
             self.assertEqual(0x500000, pet.erase_start)
-            self.assertLessEqual(pet.erase_end, 0x600000)
+            self.assertLessEqual(pet.erase_end, 0x5e9000)
             for name, _, _, start, size in EXPECTED_PARTITIONS[:9]:
                 self.assertFalse(pet.erase_start < start + size and pet.erase_end > start, name)
 
@@ -267,7 +270,8 @@ class ReleaseValidationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             build = write_fixture(tmp)
             path = build / "partition_table/partition-table.bin"
-            data = bytearray(path.read_bytes()); struct.pack_into('<I', data, 9*32+28, 0); path.write_bytes(data)
+            index = next(i for i, row in enumerate(EXPECTED_PARTITIONS) if row[0] == 'petart')
+            data = bytearray(path.read_bytes()); struct.pack_into('<I', data, index*32+28, 0); path.write_bytes(data)
             with self.assertRaisesRegex(RuntimeError, "flags"):
                 release.validate_release_inputs(build, "trae_card.bin")
 

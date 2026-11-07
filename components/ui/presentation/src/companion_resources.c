@@ -1,6 +1,7 @@
 #include "presentation/companion_resources.h"
 #include "companion_pack_meta.h"
 #include "body_font_meta.h"
+#include "presentation/hangul_font.h"
 #include "esp_log.h"
 #include "esp_partition.h"
 #include "esp_rom_crc.h"
@@ -48,7 +49,7 @@ bool companion_resources_init(void) {
   const esp_partition_t *body_part = valid ?
       esp_partition_find_first(ESP_PARTITION_TYPE_DATA, 0x40, "petart") : NULL;
   const void *body = NULL;
-  if (!body_part || body_part->address != 0x500000 || body_part->size != 0x100000 ||
+  if (!body_part || body_part->address != 0x500000 || body_part->size < BODY_FONT_OFFSET + BODY_FONT_SIZE ||
       !body_part->readonly || body_part->encrypted ||
       esp_partition_mmap(body_part, BODY_FONT_OFFSET, BODY_FONT_SIZE,
                          ESP_PARTITION_MMAP_DATA, &body, &body_handle) != ESP_OK) {
@@ -63,6 +64,13 @@ bool companion_resources_init(void) {
     ESP_LOGE("companion", "Missing/mismatched resource pack");
     return false;
   }
+  const uint8_t *body_bytes = body;
+  passport_hangul_bind(body_bytes + u32(body_bytes + 60), BODY_FONT_SIZE - u32(body_bytes + 60),
+                       p + HANGUL_TITLE_OFFSET, HANGUL_TITLE_BYTES);
+  #ifdef ESP_PLATFORM
+  extern const uint8_t lang_begin[] asm("_binary_languages_bin_start"), lang_end[] asm("_binary_languages_bin_end");
+  passport_languages_bind(lang_begin,(size_t)(lang_end-lang_begin));
+  #endif
   mapped = p;
   passport_bind_body(body);
   passport_bind_nickname(p + u32(p + 24));
@@ -82,6 +90,12 @@ bool companion_resources_init(void) {
            fingerprint + 17);
   ESP_LOGI("companion", "Body font mapped: %u bytes (%s)", BODY_FONT_SIZE, body_fingerprint + 16);
   return true;
+}
+const uint8_t *companion_official_icon(unsigned index) {
+  return mapped && index < 6 ? mapped + OFFICIAL_ICONS_OFFSET + index * 3072 : NULL;
+}
+const uint8_t *companion_home_avatar(void) {
+  return mapped ? mapped + DEFAULT_AVATAR_OFFSET : NULL;
 }
 const companion_portrait_t *companion_avatar(unsigned index) {
   return mapped && index < COMPANION_COUNT ? &portraits[index] : NULL;

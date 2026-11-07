@@ -16,6 +16,7 @@ typedef int esp_err_t;
 #define ESP_FAIL -1
 #define HTTP_METHOD_POST 1
 #define XZ_JSON_MAX 2048
+#define XZ_CONSOLE_VERSION "2.1.0.42"
 #define HTTP_EVENT_ON_DATA 1
 #define MALLOC_CAP_8BIT 0
 #define MBEDTLS_ERR_SSL_ALLOC_FAILED -0x7F00
@@ -35,7 +36,9 @@ static esp_http_client_handle_t esp_http_client_init(const esp_http_client_confi
  assert(cfg->crt_bundle_attach&&cfg->disable_auto_redirect&&cfg->timeout_ms==6000);
  config=*cfg;return scenario==9?NULL:&config;
 }
-static void esp_http_client_set_header(esp_http_client_handle_t h,const char *k,const char *v){(void)h;(void)k;(void)v;}
+static void esp_http_client_set_header(esp_http_client_handle_t h,const char *k,const char *v){
+ (void)h;if(!strcmp(k,"User-Agent"))assert(!strcmp(v,"ai-passport/2.1.0.42"));
+}
 static void esp_http_client_set_post_field(esp_http_client_handle_t h,const char *p,size_t n){(void)h;(void)p;(void)n;}
 static int esp_http_client_perform(esp_http_client_handle_t h){
  if(scenario==1||scenario==5||scenario==6||scenario==7||scenario==8||scenario>=11)return ESP_FAIL;

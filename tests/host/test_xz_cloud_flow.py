@@ -10,7 +10,15 @@ BOUNDARY=r'''
 #include <stdio.h>
 #include <time.h>
 #define ESP_LOGI(...) ((void)0)
+#define XZ_CONSOLE_VERSION "2.1.0.42"
 static bool xz_cloud_cache_clear(void){return true;}
+static unsigned saves,loads;static bool reported;
+static bool xz_cloud_cache_version_current(const cJSON *cached){return reported && cached;}
+static bool xz_cloud_cache_save(const cJSON *fresh){
+ if(!cJSON_GetObjectItem(fresh,"mqtt") || cJSON_GetObjectItem(fresh,"activation"))return false;
+ saves++;reported=true;return true;
+}
+static cJSON *xz_cloud_cache_load(void){loads++;return cJSON_Parse("{\"cached\":true}");}
 #define pdMS_TO_TICKS(x) (x)
 #define SNTP_OPMODE_POLL 0
 static bool sntp_started;
@@ -33,7 +41,12 @@ REQUEST=r'''
 static cloud_error_t cloud_failure;
 static bool cloud_retryable;
 static cJSON *cloud_request(const char *payload){
- (void)payload;calls++;cloud_retryable=true;cloud_failure=CLOUD_NETWORK;
+ cJSON *request=cJSON_Parse(payload);assert(request);
+ const cJSON *app=cJSON_GetObjectItem(request,"application");
+ assert(!strcmp(cJSON_GetObjectItem(app,"version")->valuestring,XZ_CONSOLE_VERSION));
+ cJSON_Delete(request);calls++;cloud_retryable=true;cloud_failure=CLOUD_NETWORK;
+ if(scenario==9)return cJSON_Parse("{\"mqtt\":{}}");
+ if(scenario==10){stop=true;return cJSON_Parse("{\"mqtt\":{}}");}
  if(scenario==8&&calls>=2){cloud_retryable=false;cloud_failure=CLOUD_TLS;return NULL;}
  if(scenario==6&&calls>=6)return cJSON_Parse("{\"mqtt\":{}}");
  if(scenario==6&&calls>=2)return NULL;
@@ -70,6 +83,16 @@ int main(void){
  assert(!xz_cloud_config(&stop,status,code)&&stop&&!calls&&!errors&&now==100);stop=false;
  scenario=4;calls=binds=errors=0;now=0;code[0]=0;
  assert(!xz_cloud_config(&stop,status,code)&&!binds&&errors==1&&!code[0]);
+ // An old profile survives a report outage and throttles retries. One success
+ // enables the fast path across future sessions. Cancellation cannot commit.
+ now=0;calls=0;scenario=2;
+ root=xz_cloud_refresh_version(cJSON_CreateObject(),&stop);
+ assert(root && loads==1 && calls==1 && !saves && !reported);
+ assert(xz_cloud_refresh_version(root,&stop)==root && calls==1);
+ now=300000;scenario=9;root=xz_cloud_refresh_version(root,&stop);
+ assert(root && saves==1 && calls==2 && reported);
+ now+=300000;assert(xz_cloud_refresh_version(root,&stop)==root && calls==2);
+ reported=false;scenario=10;assert(!xz_cloud_refresh_version(root,&stop) && stop && saves==1);
  puts("cloud flow: 30 minute window, transient retries, stable code, memory error and cancellation PASS");
 }
 '''

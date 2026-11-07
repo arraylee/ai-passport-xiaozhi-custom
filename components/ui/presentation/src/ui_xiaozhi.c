@@ -1,5 +1,7 @@
 #include "presentation/ui_xiaozhi.h"
 #include "presentation/ui_theme.h"
+#include "presentation/ui_official.h"
+#include "xz_theme.h"
 #include "presentation/ui_xiaozhi_theme.h"
 #include <stdio.h>
 #include <string.h>
@@ -14,7 +16,8 @@ static struct {
   unsigned page, selection, frame, blink_cycle;
   unsigned edit_volume, menu_first;
   uint32_t expression_at, blink_started, blink_delay;
-  bool greeting, setting_error, welcome_drawn;
+  bool greeting, setting_error, welcome_drawn, official_dark;
+  const xz_theme_t *installed;
 } X;
 static void welcome_drawn(lv_event_t *event) { (void)event; X.welcome_drawn = true; }
 bool ui_xiaozhi_welcome_drawn(void) { return X.welcome_drawn; }
@@ -104,9 +107,19 @@ static void footer(const char *hint) {
   center(text(hint, 16, 292, 208, &ui_font_caption, XZ_UI_MUTED));
 }
 static void message_text(const char *detail) {
+  const xz_theme_t *pack = X.view.avatar == XZ_OFFICIAL_AVATAR ? xz_theme_installed() : NULL;
+  if (pack && pack->hide_subtitle && (X.view.phase == XZ_SPEAK || X.view.phase == XZ_THINK)) {
+    lv_label_set_text(X.message, "");
+    return;
+  }
   lv_point_t size;
-  lv_text_get_size(&size, detail, &ui_font_body, 0, 3, 196, LV_TEXT_FLAG_NONE);
-  int y = size.y <= ui_font_body.line_height ? (54 - ui_font_body.line_height) / 2 : 6;
+  const lv_font_t *font=X.view.avatar==XZ_OFFICIAL_AVATAR?ui_official_font():&ui_font_body;
+  lv_text_get_size(&size, detail, font, 0, 3, 196, LV_TEXT_FLAG_NONE);
+  int y = 6;
+  if (size.y <= font->line_height && font->line_height <= 48)
+    y = (54 - font->line_height) / 2;
+  else if (X.view.avatar == XZ_OFFICIAL_AVATAR)
+    y = LV_CLAMP(1, (54 - 2 * font->line_height - 3) / 2, 6);
   lv_label_set_text(X.message, detail);
   lv_obj_set_pos(X.message, 10, y);
   lv_obj_set_height(X.message, 54 - 2 * y);
@@ -146,6 +159,11 @@ static void control(const char *s, unsigned i, unsigned count, int y) {
                              X.selection == i ? XZ_UI_ON_ACCENT : XZ_UI_ACCENT);
 }
 static void motion(lv_timer_t *timer) {
+  if (X.root && X.portrait && X.view.avatar==XZ_OFFICIAL_AVATAR) {
+    unsigned delay=ui_official_expression(X.portrait,&X.view,lv_tick_elaps(X.expression_at));
+    if(timer){if(delay){lv_timer_set_period(timer,delay);lv_timer_resume(timer);}else lv_timer_pause(timer);}
+    return;
+  }
   if (!X.root || !X.portrait || !X.art || !X.art->frames) {
     if (timer) lv_timer_pause(timer);
     return;
@@ -198,6 +216,9 @@ static void speaking_mouth(lv_event_t *event) {
   lv_draw_rect(layer,&mouth,&tongue);
 }
 static void show_portrait(int y) {
+  if (X.view.avatar==XZ_OFFICIAL_AVATAR) {
+    X.portrait=ui_official_stage(X.root,y);motion(X.motion);return;
+  }
   if (!X.art || !X.art->frames) {
     center(text("形象资源未就绪", 20, y + 64, 200, &ui_font_title, XZ_UI_INK));
     return;
@@ -358,19 +379,22 @@ static void render(void) {
     return;
   }
   char count[24];
-  snprintf(count, sizeof count, "%02u / 02", X.view.avatar + 1);
+  if(X.view.avatar==XZ_OFFICIAL_AVATAR) snprintf(count,sizeof count,"官方主题");
+  else snprintf(count, sizeof count, "%02u / 03", X.view.avatar + 1);
   X.badge = text(X.page == APPEARANCE ? count : phase_name(X.view.phase), 14, 40, 212,
        &ui_font_title, XZ_UI_ACCENT);
   show_portrait(66);
   if (X.page == APPEARANCE) {
     center(text("上下切换 · 确定选用", 12, 236, 216, &ui_font_title, XZ_UI_INK));
     center(
-        text("名字与性格在云端设置", 12, 274, 216, &ui_font_title, XZ_UI_INK));
+        text(X.view.avatar==XZ_OFFICIAL_AVATAR ? (xz_theme_installed()?"已载入官方主题包":"可从小智主题工具安装") : "名字与性格在云端设置", 12, 274, 216, &ui_font_title, XZ_UI_INK));
     return;
   }
   lv_obj_t *bubble = panel(X.root, 12, 216, 216, 54, false);
-  X.message =
-      ui_theme_text(bubble, X.view.detail, 10, 6, 196, &ui_font_body, XZ_UI_INK);
+  bool official=X.view.avatar==XZ_OFFICIAL_AVATAR;
+  if (official) lv_obj_set_style_bg_color(bubble,lv_color_hex(ui_official_background()),0);
+  X.message = ui_theme_text(bubble,X.view.detail,10,6,196,official?ui_official_font():&ui_font_body,
+                            official?ui_official_ink():XZ_UI_INK);
   lv_obj_set_height(X.message, 42);
   lv_label_set_long_mode(X.message, LV_LABEL_LONG_DOT);
   center(X.message);
@@ -403,6 +427,11 @@ void ui_xiaozhi_update(const xz_view_t *v, const companion_portrait_t *art) {
   if (show_fault) { X.page = CHAT; X.selection = 0; }
   bool phase_changed = v->phase != X.view.phase;
   bool audio_changed = v->output_active != X.view.output_active;
+  bool official=v->avatar==XZ_OFFICIAL_AVATAR;
+  bool rebuild_official=(official!=(X.view.avatar==XZ_OFFICIAL_AVATAR)) ||
+      (official && (X.official_dark!=xz_theme_dark() || X.installed!=xz_theme_installed()));
+  X.official_dark=xz_theme_dark();X.installed=xz_theme_installed();
+  bool emotion_changed=official && v->emotion!=X.view.emotion;
   bool art_changed = art != X.art || v->avatar != X.view.avatar;
   bool controls_changed = chat_control_count(v->phase) != chat_control_count(X.view.phase);
   bool detail_changed = strcmp(X.view.detail, v->detail) != 0;
@@ -414,6 +443,8 @@ void ui_xiaozhi_update(const xz_view_t *v, const companion_portrait_t *art) {
   }
   X.view = *v;
   X.art = art;
+  if (rebuild_official && (X.page==CHAT || X.page==APPEARANCE)) { render();return; }
+  if (emotion_changed && X.portrait) { X.expression_at=lv_tick_get();motion(X.motion); }
   if (audio_changed && X.portrait && X.page == CHAT && !phase_changed && !art_changed) {
     if (v->output_active) X.expression_at = lv_tick_get();
     motion(X.motion); lv_timer_reset(X.motion);
@@ -422,16 +453,16 @@ void ui_xiaozhi_update(const xz_view_t *v, const companion_portrait_t *art) {
   if (X.page == CHAT && controls_changed) X.selection = 0;
   // Keep the portrait, speech bubble and controls alive across speech updates.
   // Changing a sentence or moving focus must not invalidate a full LCD frame.
-  if (!show_fault && X.badge && ((X.portrait != NULL) == (art && art->frames)) &&
+  if (!show_fault && X.badge && ((X.portrait != NULL) == (official || (art && art->frames))) &&
       (X.page == APPEARANCE || chat_control_count(v->phase) == 3)) {
     if (X.page == CHAT) {
       if (phase_changed) {
         lv_label_set_text(X.badge, phase_name(v->phase));
         lv_label_set_text(X.caption[0], primary_action(v->phase));
       }
-      if (detail_changed) message_text(v->detail);
+      if (detail_changed || (official && phase_changed)) message_text(v->detail);
     } else if (art_changed) {
-      lv_label_set_text_fmt(X.badge, "%02u / 02", v->avatar + 1);
+      lv_label_set_text_fmt(X.badge, "%02u / 03", v->avatar + 1);
     }
     if (X.portrait && (art_changed || phase_changed)) {
       if (art_changed) X.frame = COMPANION_FACE_COUNT;
@@ -520,7 +551,7 @@ ui_xz_action_t ui_xiaozhi_key(ui_play_key_t key, unsigned *avatar) {
   }
   if (X.page == APPEARANCE) {
     if (key == UI_PLAY_UP || key == UI_PLAY_DOWN) {
-      *avatar = (X.view.avatar + 1) % 2;
+      *avatar = (X.view.avatar + (key==UI_PLAY_UP ? XZ_AVATARS-1 : 1)) % XZ_AVATARS;
       return UI_XZ_AVATAR;
     }
     if (key == UI_PLAY_OK) {

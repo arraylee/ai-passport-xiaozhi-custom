@@ -18,7 +18,7 @@ BOUNDARY=r'''
 #define TAG "test"
 static atomic_bool cancel;
 static xz_view_t working;
-typedef struct {void *mqtt;int udp,aes;atomic_bool connected,control_ready;atomic_int error;} channel_t;
+typedef struct {void *mqtt;int udp,aes;atomic_bool connected,control_ready,closing;atomic_int error;} channel_t;
 static unsigned scenario,opened,https,saved,cleared,clients,sockets,contexts,released,errors,binds;
 static void status(xz_phase_t phase,const char *detail){working.phase=phase;if(phase==XZ_BIND)binds++;if(phase==XZ_ERROR)errors++;(void)detail;}
 static void codec_arena_metric(unsigned step){assert(step==3);}

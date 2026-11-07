@@ -7,6 +7,8 @@ class DeviceSettings(unittest.TestCase):
  def test_migration_preview_save_and_failure(self):
   boundary=r'''
 #define PERIPH_DISPLAY 1
+#include <stdatomic.h>
+static atomic_flag preference_busy=ATOMIC_FLAG_INIT;
 #include <assert.h>
 #include <stddef.h>
 #include <string.h>
@@ -51,7 +53,7 @@ int main(void){
  return 0;
 }
 '''
-  app=(R/'components/app/src/app.c').read_text();names=['plays_get_brightness','plays_preview_brightness','plays_set_brightness','plays_get_sleep_minutes','plays_set_sleep_minutes']
+  app=(R/'components/app/src/app.c').read_text();names=['plays_get_brightness','plays_preview_brightness','apply_brightness','plays_set_brightness','plays_get_sleep_minutes','plays_set_sleep_minutes']
   with tempfile.TemporaryDirectory() as d:
    p=Path(d);(p/'test.c').write_text(boundary+'\n'.join(function(app,n) for n in names)+cases)
    subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=undefined','-fno-sanitize-recover=all','-I'+str(R/'components/core/services/include'),str(p/'test.c'),str(R/'components/core/services/src/profile_ctl.c'),'-o',str(p/'test')],check=True)

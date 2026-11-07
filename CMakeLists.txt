@@ -12,10 +12,19 @@ set(EXTRA_COMPONENT_DIRS
     components/app)
 
 # 固件版本(供 release.py 命名与 esp_app_desc 使用)。发版时按需递增。
-set(PROJECT_VER "2.1.0-xiaozhi.14")
+set(PROJECT_VER "2.1.0-xiaozhi.17")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(trae_card)
+
+# The console accepts 3 or 4 numeric components. Keep the board edition in
+# the package name and use the same release numbers for every cloud report.
+string(REPLACE "-xiaozhi." "." xiaozhi_console_version "${PROJECT_VER}")
+if(NOT xiaozhi_console_version MATCHES "^[0-9]+[.][0-9]+[.][0-9]+([.][0-9]+)?$")
+    message(FATAL_ERROR "Invalid XiaoZhi console version derived from ${PROJECT_VER}")
+endif()
+idf_component_get_property(xiaozhi_lib xiaozhi COMPONENT_LIB)
+target_compile_definitions(${xiaozhi_lib} PRIVATE XZ_CONSOLE_VERSION="${xiaozhi_console_version}")
 
 # esp_codec_dev 1.5.10 ignores DMA-format failure during open and can start
 # freed descriptors. Build two reviewed, hash-pinned corrections without
@@ -63,7 +72,7 @@ add_custom_command(
             --input "${PROJECT_DIR}/assets/avatars"
             --output "${imgava_bin}"
             --catalog-output "${avatar_catalog}"
-            --size "${imgava_size}" --native-cache
+            --size "${imgava_size}"
     DEPENDS
         "${PROJECT_DIR}/tools/avatar_pack.py"
         ${avatar_sources}

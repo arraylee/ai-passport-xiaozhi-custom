@@ -29,6 +29,7 @@ BOUNDARY = r'''
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#define XZ_CONSOLE_VERSION "2.1.0.42"
 static char disk[5000],pending[5000],uuid[37]="12345678-1234-1234-1234-123456789abc";
 static size_t length,pending_length;
 static int writes,commits,handles,fail_open,fail_write,fail_commit,read_race;
@@ -64,7 +65,11 @@ int main(void){
  cJSON *source=fixture();assert(source);unsigned baseline=live;
  assert(xz_cloud_cache_save(source));assert(writes==1&&commits==1&&live==baseline&&!handles);
  assert(!strstr(disk,"never-cache-session-key")&&!strstr(disk,"discard-this"));
- cJSON *loaded=xz_cloud_cache_load();assert(loaded);cJSON_Delete(loaded);assert(live==baseline);
+ cJSON *loaded=xz_cloud_cache_load();assert(loaded && xz_cloud_cache_version_current(loaded));
+ cJSON_ReplaceItemInObject(loaded,"reported_firmware",cJSON_CreateString("2.1.0.41"));
+ assert(!xz_cloud_cache_version_current(loaded));
+ cJSON_DeleteItemFromObject(loaded,"reported_firmware");
+ assert(!xz_cloud_cache_version_current(loaded));cJSON_Delete(loaded);assert(live==baseline);
  assert(xz_cloud_cache_save(source)&&writes==1&&commits==1); // Deduplicated durable writes.
  uuid[0]='x';assert(!xz_cloud_cache_load());uuid[0]='1';
  char saved[5000];size_t saved_len=length;memcpy(saved,disk,length);
