@@ -2,7 +2,15 @@
 
 适用于 AI PASSPORT ESP32-C3 / 8 MB 板卡的独立固件，沿用已经验证的默认固件硬件支持与小智交互升级。
 
-当前版本 **2.1.0-xiaozhi.17**，小智控制台显示 **2.1.0.17**，使用 **ESP-IDF v5.5.3** 构建。
+当前版本 **2.1.0-xiaozhi.18**，小智控制台显示 **2.1.0.18**，使用 **ESP-IDF v5.5.3** 构建。
+
+## .18 微信小程序安装版
+
+用于 [FoloToy 小程序玩法安装器](https://github.com/FoloToy/ai-passport-miniapp-installer/blob/main/README.zh_CN.md)的文件是以 `-miniapp.bin` 结尾的合并固件，**5,687,560 字节（5.69 MB）**。保留小智对话、语音调节、官方主题、多语言字库、开机音乐和两个动态形象。人物帧无损压缩，显示时按四行解开；官方主题包空间仍为 920 KiB。为给常驻安装器留空间，自传相册/头像的 JPEG 上限改为每张 28 KiB，自传音频分区为 80 KiB。这些限制不作用于小智对话语音。
+
+1. 卡上需已有**协议 4** 的小程序玩法安装器。首次安装或从旧协议升级，请先按[官方说明](https://github.com/FoloToy/ai-passport-miniapp-installer/blob/main/docs/development/engineering/ble-recovery-compatibility.zh_CN.md)通过 USB 刷入安装器的**首刷整包**；此操作会清除原玩法和配置。小智的 BIN 不含常驻安装器。
+2. 在安装模式下，从 AI Passport 微信小程序的「设备」页连接卡，首次配置 2.4 GHz Wi-Fi。待玩法 72 上架此版本后，在社区打开「小智 AI 对话机器人」，确认是 **.18**，点「安装到设备」，保持供电和联网直到重启。以后关机后同时按开机键和上键，可重新进入安装模式。
+3. 小智会优先尝试已有的可用网络，也可在菜单「重新配网」。通过小程序换装会重置小智本地设置；若屏幕显示激活码，请按提示绑定，音量、形象或自定义主题需要重新选择。此包不用于旧版 USB 保留配置升级。
 
 ## 使用体验
 
@@ -47,7 +55,7 @@
 
 新增测试通过实际固件的资源加载器和打包后字库，逐字核对 **14,070 个字号/字符组合、4,130,350 个像素**，并覆盖资源损坏、映射失败、失败清理与重复初始化。覆盖范围是上述字符集合，不代表全部 Unicode 或 emoji。
 
-## 安装
+## 传统 USB 分段安装
 
 使用同一版本发布包中的六段镜像：启动程序、分区表、应用、头像资源、共享资源及完整中文字库、形象资源。**.9 升级到 .10 需要完整固件包，不能只刷应用 BIN。**
 
@@ -71,6 +79,15 @@ idf.py build
 python scripts/release.py
 python tools/verify_release.py releases/<生成的ZIP> --build-dir build
 ```
+
+构建小程序版本时使用单独目录与配置，避免改写传统 USB 布局：
+
+```sh
+idf.py -B build-miniapp -DSDKCONFIG="$PWD/build-miniapp/sdkconfig" -DPASSPORT_MINIAPP=ON build
+python tools/pack_miniapp.py --build-dir build-miniapp --output releases/AI-PASSPORT-Xiaozhi-2.1.0-xiaozhi.18-miniapp.bin
+```
+
+安装兼容测试使用上游协议 4 的真实分区与流式写入代码，见 `tests/miniapp_recovery/run.py --help`。测试替代的是无线、Flash 和硬件验镜像接口，不是微信客户端或卡上的实测。小程序版本使用的启动钩子来自 [FoloToy 安装器 127c56b](https://github.com/FoloToy/ai-passport-miniapp-installer/tree/127c56bc97b7ea85bf4bfd2b52ce4e2d80a30566/bootloader_components/recovery_boot_hook)，原 MIT 许可随源码保留。
 
 依赖由 `dependencies.lock` 锁定，首次构建由 ESP-IDF 获取。源码已附带生成后的字库；只有重新生成字体时才需要 Node.js 和 `lv_font_conv@1.5.3`。字库来源、许可及生成步骤见 [字体说明](assets/fonts/README.md)。
 

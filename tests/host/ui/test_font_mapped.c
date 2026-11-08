@@ -13,8 +13,13 @@ LV_FONT_DECLARE(ui_font_body);
 LV_FONT_DECLARE(ui_font_title);
 static uint8_t *companion_data,*body_data;
 static unsigned maps_live,maps_total,fault;
+#ifdef PASSPORT_MINIAPP
+static esp_partition_t art_part={0x3b9000,0x194000,false,false};
+static esp_partition_t font_part={0x2d0000,0xe9000,false,false};
+#else
 static esp_partition_t art_part={0x600000,0x200000,true,false};
 static esp_partition_t font_part={0x500000,0x100000,true,false};
+#endif
 uint32_t esp_rom_crc32_le(uint32_t crc,const uint8_t *data,uint32_t size){return crc32(crc,data,size);}
 const esp_partition_t *esp_partition_find_first(int type,int subtype,const char *name){
     assert(type==ESP_PARTITION_TYPE_DATA);
@@ -43,11 +48,20 @@ static void failed_init(void){
     lv_font_glyph_dsc_t g={0};assert(!lv_font_get_glyph_dsc(&ui_font_body,&g,0x54e6,0));
 }
 static void exercise_resource_failures(void){
+    /* Compact resources are authenticated by content and need no readonly flag. */
+#ifdef PASSPORT_MINIAPP
+    unsigned capacity=art_part.size;art_part.size=COMPANION_SIZE-1;failed_init();art_part.size=capacity;
+#else
     failed_init(); /* caller starts with deliberately invalid readonly flag */
     art_part.readonly=true;
+#endif
     for(fault=1;fault<=4;fault++)failed_init();fault=0;
     font_part.encrypted=true;failed_init();font_part.encrypted=false;
+#ifdef PASSPORT_MINIAPP
+    capacity=font_part.size;font_part.size=BODY_FONT_OFFSET+BODY_FONT_SIZE-1;failed_init();font_part.size=capacity;
+#else
     font_part.address++;failed_init();font_part.address--;
+#endif
     const unsigned positions[]={0,4,8,12,16,24,32,36,63,64,BODY_FONT_SIZE-1};
     for(unsigned i=0;i<sizeof positions/sizeof *positions;i++){
         body_data[positions[i]]^=255;failed_init();body_data[positions[i]]^=255;
@@ -70,7 +84,7 @@ static unsigned verify_font_range(const lv_font_t *font,const uint8_t *character
 }
 int main(void){
     lv_init();size_t size;
-    companion_data=read_file(FONT_COMPANION_FILE,&size);assert(size==0x200000);
+    companion_data=read_file(FONT_COMPANION_FILE,&size);assert(size>=COMPANION_SIZE&&size<=art_part.size);
     body_data=read_file(FONT_BODY_FILE,&size);assert(size==BODY_FONT_SIZE);
     art_part.readonly=false;exercise_resource_failures();
     uint8_t *languages=read_file(FONT_LANG_FILE,&size);passport_languages_bind(languages,size);

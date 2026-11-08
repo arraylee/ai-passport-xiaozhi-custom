@@ -142,7 +142,7 @@ int main(void){
 
 def adapter_source():
  text=(ROOT/'components/platform/xiaozhi/xz_network.c').read_text()
- return text[text.index('static bool wifi_current_link'):text.index('void xz_identity')]+text[text.index('static void load_wifi_profiles'):text.index('bool xz_wifi_open')]
+ return text[text.index('static bool wifi_current_link'):text.index('void xz_identity')]+text[text.index('#ifdef PASSPORT_MINIAPP\n/* Recovery owns'):text.index('bool xz_wifi_open')]
 
 def run_case(case, fakes=FAKES):
  src=ROOT/'components/platform/xiaozhi'
@@ -153,6 +153,38 @@ def run_case(case, fakes=FAKES):
 
 class AutoConnectTest(unittest.TestCase):
  def test_real_adapter(self):run_case(CASES)
+ def test_import_recovery_wifi_without_modifying_recovery(self):
+  recovery = r'''
+#define PASSPORT_MINIAPP 1
+static int opens, step;
+static const char *r_ssid="TestRecovery", *r_password="test-only-1234";
+static int nvs_flash_init_partition(const char *part){assert(!strcmp(part,"netcfg"));opens++;return step==1;}
+static int nvs_open_from_partition(const char *p,const char *ns,int mode,nvs_handle_t *h){
+ assert(!strcmp(p,"netcfg")&&!strcmp(ns,"wifi")&&mode==NVS_READONLY);*h=2;return step==2;
+}
+static int nvs_get_str(nvs_handle_t h,const char *key,char *out,size_t *len){
+ assert(h==2);bool is_ssid=!strcmp(key,"ssid");assert(is_ssid||!strcmp(key,"password"));
+ const char *s=is_ssid?r_ssid:r_password;size_t n=strlen(s)+1;
+ if(n>*len||step==(is_ssid?3:4))return 1;memcpy(out,s,n);*len=n;return 0;
+}
+'''
+  run_case(r'''
+int main(void){
+ (void)auto_wifi;(void)reset;(void)status;(void)wifi_failure;
+ xz_wifi_profiles_t p;wifi_config_t cfg={0};
+ for(step=1;step<=4;step++){load_wifi_profiles(&p);assert(p.count==0);}
+ step=0;load_wifi_profiles(&p);
+ assert(p.count==1&&p.items[0].ssid_len==strlen(r_ssid)&&!memcmp(p.items[0].ssid,r_ssid,p.items[0].ssid_len)&&!strcmp(p.items[0].password,r_password));
+ assert(!sets&&!commits);
+ memcpy(driver_saved.sta.ssid,"Saved",5);memcpy(driver_saved.sta.password,"12345678",8);
+ int before=opens;load_wifi_profiles(&p);assert(opens==before&&p.count==1&&p.items[0].ssid_len==5);
+ memcpy(cfg.sta.ssid,"Local",5);memcpy(cfg.sta.password,"87654321",8);assert(save_wifi_profile(&p,&cfg));
+ load_wifi_profiles(&p);assert(opens==before&&!memcmp(p.items[0].ssid,"Local",5)&&sets==1&&commits==1);
+ memset(&driver_saved,0,sizeof driver_saved);disk_size=0;r_ssid="";load_wifi_profiles(&p);assert(!p.count);
+ r_ssid="Open";r_password="";load_wifi_profiles(&p);assert(p.count==1&&!p.items[0].password[0]);
+ puts("Recovery read-only Wi-Fi import: open/protected networks, failed reads, existing preferences and no unsolicited writes passed");
+}
+''',FAKES+recovery)
  def test_same_saved_network_with_slow_dhcp_is_not_abandoned(self):
   run_case(r'''
 int main(void){

@@ -1,0 +1,18 @@
+# 8 MiB ESP32-C3. Protocol 4 requires unflagged entries. Resource readers validate contents.
+# Name,   Type, SubType, Offset, Size
+nvs,         data,nvs,     0x9000,  0x6000
+phy_init,    data,phy,     0xf000,  0x1000
+factory,     app, factory, 0x10000, 0x2c0000
+petart,      data,0x40,    0x2d0000,0xe9000
+companion,   data,0x41,    0x3b9000,0x194000
+imgava,      data,spiffs,  0x54d000,0x20000
+assets,      data,spiffs,  0x56d000,0xe6000
+theme_cache, data,0x42,    0x653000,0x17000
+cardid,      data,nvs,     0x66a000,0x4000
+imgframe,    data,spiffs,  0x66e000,0x26000
+imgstore,    data,spiffs,  0x694000,0x8000
+imguser,     data,spiffs,  0x69c000,0x8000
+audio,       data,spiffs,  0x6a4000,0x14000
+# 0x6b8000 and 0x6b9000 are reserved for the install journal and backup table.
+netcfg,      data,nvs,     0x6bc000,0x4000
+recovery,    app, test,    0x6c0000,0x140000

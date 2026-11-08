@@ -12,10 +12,24 @@ set(EXTRA_COMPONENT_DIRS
     components/app)
 
 # 固件版本(供 release.py 命名与 esp_app_desc 使用)。发版时按需递增。
-set(PROJECT_VER "2.1.0-xiaozhi.17")
+set(PROJECT_VER "2.1.0-xiaozhi.18")
 
+option(PASSPORT_MINIAPP "Build for the FoloToy mini-program Recovery installer" OFF)
+if(PASSPORT_MINIAPP)
+    set(SDKCONFIG_DEFAULTS "sdkconfig.defaults;sdkconfig.miniapp.defaults")
+else()
+    set(BOOTLOADER_IGNORE_EXTRA_COMPONENT recovery_boot_hook)
+endif()
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(trae_card)
+if(PASSPORT_MINIAPP)
+    if(NOT CONFIG_PARTITION_TABLE_CUSTOM_FILENAME STREQUAL "partitions-miniapp.csv")
+        message(FATAL_ERROR "The mini-program build needs a separate SDKCONFIG with partitions-miniapp.csv")
+    endif()
+    idf_build_set_property(COMPILE_DEFINITIONS PASSPORT_MINIAPP=1 APPEND)
+elseif(CONFIG_PARTITION_TABLE_CUSTOM_FILENAME STREQUAL "partitions-miniapp.csv")
+    message(FATAL_ERROR "Use PASSPORT_MINIAPP with the mini-program partition table")
+endif()
 
 # The console accepts 3 or 4 numeric components. Keep the board edition in
 # the package name and use the same release numbers for every cloud report.
@@ -104,7 +118,8 @@ esptool_py_flash_target_image(flash petart "${petart_offset}" "${petart_bin}")
 add_dependencies(flash pet_art_pack_bin)
 
 # Never span the identity/runtime regions with a raw image.
-esptool_py_flash_target_image(flash companion "0x600000" "${CMAKE_BINARY_DIR}/companion/companion.bin")
+partition_table_get_partition_info(companion_offset "--partition-name companion" "offset")
+esptool_py_flash_target_image(flash companion "${companion_offset}" "${CMAKE_BINARY_DIR}/companion/companion.bin")
 
 # esp_audio_codec 2.5 already links absolute imported archives. Its redundant
 # raw '-L path' item is split by the linker when the checkout path has spaces.

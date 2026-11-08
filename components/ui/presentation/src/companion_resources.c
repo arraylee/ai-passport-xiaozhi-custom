@@ -1,5 +1,8 @@
 #include "presentation/companion_resources.h"
 #include "companion_pack_meta.h"
+#ifdef PASSPORT_MINIAPP
+#include "presentation/compact_face.h"
+#endif
 #include "body_font_meta.h"
 #include "presentation/hangul_font.h"
 #include "esp_log.h"
@@ -26,8 +29,14 @@ bool companion_resources_init(void) {
     return true;
   const esp_partition_t *part =
       esp_partition_find_first(ESP_PARTITION_TYPE_DATA, 0x41, "companion");
+#ifdef PASSPORT_MINIAPP
+  const unsigned format = 4;
+  if (!part || part->size < COMPANION_SIZE || part->encrypted)
+#else
+  const unsigned format = 3;
   if (!part || part->address != 0x600000 || part->size != 0x200000 ||
       !part->readonly || part->encrypted)
+#endif
     return false;
   const void *raw = NULL;
   if (esp_partition_mmap(part, 0, COMPANION_SIZE, ESP_PARTITION_MMAP_DATA, &raw,
@@ -35,22 +44,25 @@ bool companion_resources_init(void) {
     return false;
   const uint8_t *p = raw;
   bool valid =
-      !memcmp(p, "CPR1", 4) && u32(p + 4) == 3 &&
+      !memcmp(p, "CPR1", 4) && u32(p + 4) == format &&
       u32(p + 8) == COMPANION_SIZE && u32(p + 12) == COMPANION_CRC &&
       esp_rom_crc32_le(0, p + 16, COMPANION_SIZE - 16) == COMPANION_CRC;
   uint32_t end = 128;
   for (unsigned i = 0; valid && i < 2 + COMPANION_COUNT * COMPANION_FACE_COUNT; i++) {
     uint32_t at = u32(p + 16 + i * 8), n = u32(p + 20 + i * 8);
     valid = at >= end && !(at % 4) && at <= COMPANION_SIZE && n &&
-            n <= COMPANION_SIZE - at && (i < 2 || n == COMPANION_FACE_WIDTH * COMPANION_FACE_HEIGHT * 3);
+            n <= COMPANION_SIZE - at && (i < 2 || (format == 4 ? n >= 78 && !memcmp(p + at, "XZF1", 4) : n == COMPANION_FACE_WIDTH * COMPANION_FACE_HEIGHT * 3));
     end = at + n;
   }
   valid = valid && u32(p + 20) == 32;
   const esp_partition_t *body_part = valid ?
       esp_partition_find_first(ESP_PARTITION_TYPE_DATA, 0x40, "petart") : NULL;
   const void *body = NULL;
-  if (!body_part || body_part->address != 0x500000 || body_part->size < BODY_FONT_OFFSET + BODY_FONT_SIZE ||
-      !body_part->readonly || body_part->encrypted ||
+  if (!body_part ||
+#ifndef PASSPORT_MINIAPP
+      body_part->address != 0x500000 || !body_part->readonly ||
+#endif
+      body_part->size < BODY_FONT_OFFSET + BODY_FONT_SIZE || body_part->encrypted ||
       esp_partition_mmap(body_part, BODY_FONT_OFFSET, BODY_FONT_SIZE,
                          ESP_PARTITION_MMAP_DATA, &body, &body_handle) != ESP_OK) {
     valid = false;
@@ -78,11 +90,12 @@ bool companion_resources_init(void) {
     portraits[i].frames = frames[i];
     for (unsigned frame = 0; frame < COMPANION_FACE_COUNT; frame++) {
     frames[i][frame] = (lv_image_dsc_t){.header = {.magic = LV_IMAGE_HEADER_MAGIC,
-                                               .cf = LV_COLOR_FORMAT_RGB565A8,
+                                               .cf = format == 4 ? LV_COLOR_FORMAT_RAW_ALPHA : LV_COLOR_FORMAT_RGB565A8,
+                                               .flags = format == 4 ? LV_IMAGE_FLAGS_USER1 : 0,
                                                .w = COMPANION_FACE_WIDTH,
                                                .h = COMPANION_FACE_HEIGHT,
                                                .stride = COMPANION_FACE_WIDTH * 2},
-                                    .data_size = COMPANION_FACE_WIDTH * COMPANION_FACE_HEIGHT * 3,
+                                    .data_size = u32(p + 36 + (i * COMPANION_FACE_COUNT + frame) * 8),
                                     .data = p + u32(p + 32 + (i * COMPANION_FACE_COUNT + frame) * 8)};
     }
   }
@@ -98,5 +111,8 @@ const uint8_t *companion_home_avatar(void) {
   return mapped ? mapped + DEFAULT_AVATAR_OFFSET : NULL;
 }
 const companion_portrait_t *companion_avatar(unsigned index) {
+#ifdef PASSPORT_MINIAPP
+  if (mapped && index < COMPANION_COUNT && !compact_face_register()) return NULL;
+#endif
   return mapped && index < COMPANION_COUNT ? &portraits[index] : NULL;
 }

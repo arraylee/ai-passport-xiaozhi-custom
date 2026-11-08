@@ -236,6 +236,30 @@ target_link_libraries(test_font_mapped PRIVATE lvgl ZLIB::ZLIB)
 add_test(NAME font_mapped_all_glyphs COMMAND test_font_mapped)
 set_tests_properties(font_mapped_all_glyphs PROPERTIES TIMEOUT 60)
 
+# Exercise the production compact image through LVGL as well as the flash-mapped
+# font loader. Generate both variants from the same source as the ESP32 build.
+set(mini_pack "${CMAKE_CURRENT_BINARY_DIR}/mini-pack")
+execute_process(COMMAND python3 "${REPO}/tools/companion_pack.py" --output "${mini_pack}" --miniapp
+    RESULT_VARIABLE mini_pack_result OUTPUT_QUIET)
+if(NOT mini_pack_result EQUAL 0)
+    message(FATAL_ERROR "Compact resource generation failed")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${REPO}/tools/compact_faces.py")
+add_executable(test_font_miniapp test_font_mapped.c font_heap_cap.c "${PRESENTATION}/src/hangul_font.c"
+    "${PRESENTATION}/src/compact_face.c" "${mini_pack}/lv_font_cn_16.c" "${mini_pack}/lv_font_cn_24.c"
+    "${PASSPORT_FONT_DIR}/ui_font_body.c" "${PASSPORT_FONT_DIR}/ui_font_title.c" $<TARGET_OBJECTS:passport_font_test_codec>)
+target_include_directories(test_font_miniapp PRIVATE "${PRESENTATION}/include" "${mini_pack}" "${CMAKE_CURRENT_LIST_DIR}/resource_stubs")
+target_compile_definitions(test_font_miniapp PRIVATE PASSPORT_MINIAPP=1 FONT_COMPANION_FILE="${mini_pack}/companion.bin"
+    FONT_LANG_FILE="${REPO}/assets/fonts/languages.bin" FONT_BODY_FILE="${mini_pack}/body_font.bin" FONT_ORACLE_FILE="${CMAKE_CURRENT_LIST_DIR}/font_oracle.bin")
+target_compile_options(test_font_miniapp PRIVATE -UNDEBUG)
+target_link_libraries(test_font_miniapp PRIVATE lvgl ZLIB::ZLIB)
+add_test(NAME miniapp_mapped_all_glyphs COMMAND test_font_miniapp)
+add_executable(test_compact_faces test_compact_faces.c "${PRESENTATION}/src/compact_face.c")
+target_include_directories(test_compact_faces PRIVATE "${PRESENTATION}/include")
+target_compile_options(test_compact_faces PRIVATE -UNDEBUG)
+target_link_libraries(test_compact_faces PRIVATE lvgl)
+add_test(NAME miniapp_face_pixels COMMAND test_compact_faces "${mapped_font_dir}/companion.bin" "${mini_pack}/companion.bin")
+
 # Replay all retained renderer scenes with actual platform rounding and8-row
 # double buffers. This closes the old native clipping omission, not MCU timing.
 add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/platform_display_production.inc"

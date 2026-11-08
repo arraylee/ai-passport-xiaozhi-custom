@@ -21,6 +21,9 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "nvs.h"
+#ifdef PASSPORT_MINIAPP
+#include "nvs_flash.h"
+#endif
 #include "mbedtls/ssl.h"
 #include "mbedtls/x509.h"
 #include "xz_protocol.h"
@@ -309,6 +312,23 @@ static esp_err_t portal_status(httpd_req_t *r) {
   httpd_resp_set_type(r, "application/json; charset=utf-8");
   return httpd_resp_sendstr(r, body);
 }
+#ifdef PASSPORT_MINIAPP
+/* Recovery owns netcfg. Import only as a fallback and save into our own NVS
+ * only after a successful connection, just like a legacy driver profile. */
+static void recovery_wifi_profile(xz_wifi_profiles_t *profiles) {
+  nvs_handle_t h;
+  if (nvs_flash_init_partition("netcfg") != ESP_OK ||
+      nvs_open_from_partition("netcfg", "wifi", NVS_READONLY, &h) != ESP_OK)
+    return;
+  char ssid[33] = {0}, password[65] = {0};
+  size_t ssid_size = sizeof(ssid), password_size = sizeof(password);
+  if (nvs_get_str(h, "ssid", ssid, &ssid_size) == ESP_OK && ssid_size > 1 &&
+      nvs_get_str(h, "password", password, &password_size) == ESP_OK)
+    xz_wifi_profiles_remember(profiles, (const uint8_t *)ssid, ssid_size - 1, password);
+  nvs_close(h);
+  memset(password, 0, sizeof(password));
+}
+#endif
 static void load_wifi_profiles(xz_wifi_profiles_t *profiles) {
   memset(profiles, 0, sizeof *profiles);
   nvs_handle_t h;
@@ -341,6 +361,9 @@ driver_profile:
           strnlen((char *)saved.sta.ssid, 32), (char *)saved.sta.password);
     memset(&saved, 0, sizeof saved);
   }
+#ifdef PASSPORT_MINIAPP
+  if (!profiles->count) recovery_wifi_profile(profiles);
+#endif
 }
 static bool save_wifi_profile(xz_wifi_profiles_t *profiles,
                               const wifi_config_t *config) {

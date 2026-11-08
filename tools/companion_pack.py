@@ -5,10 +5,10 @@ from pathlib import Path
 from PIL import Image
 try:
     from .gen_cn_font import array_data, numbers
-    from . import body_font_pack
+    from . import body_font_pack, compact_faces
 except ImportError:
     from gen_cn_font import array_data, numbers
-    import body_font_pack
+    import body_font_pack, compact_faces
 ROOT = Path(__file__).resolve().parents[1]
 SIZE = 0x200000
 HEADER = 128
@@ -18,9 +18,9 @@ WIDTH = HEIGHT = 144
 FRAME_BYTES = WIDTH * HEIGHT * 3
 
 def validate(blob):
-    if len(blob) != SIZE or blob[:4] != b'CPR1': raise ValueError('resource size/magic')
+    if len(blob) < HEADER or len(blob) > SIZE or blob[:4] != b'CPR1': raise ValueError('resource size/magic')
     version, total, crc = struct.unpack_from('<III', blob, 4)
-    if version not in (1, 2, 3) or not HEADER <= total <= SIZE: raise ValueError('resource version/length')
+    if version not in (1, 2, 3, 4) or not HEADER <= total <= len(blob) or (version != 4 and len(blob) != SIZE): raise ValueError('resource version/length')
     if zlib.crc32(blob[16:total]) != crc: raise ValueError('resource CRC')
     end = HEADER
     entries = []
@@ -28,12 +28,13 @@ def validate(blob):
     for i in range(count):
         offset, length = struct.unpack_from('<II', blob, 16 + i*8)
         if offset < end or offset % 4 or length == 0 or offset + length > total: raise ValueError('resource range')
-        if i >= 2 and length != frame_size: raise ValueError('avatar dimensions')
-        if version == 3 and i == 0 and length != 32: raise ValueError('external body font digest')
+        if version == 4 and i >= 2 and blob[offset:offset+4] != b'XZF1': raise ValueError('packed face header')
+        if version != 4 and i >= 2 and length != frame_size: raise ValueError('avatar dimensions')
+        if version >= 3 and i == 0 and length != 32: raise ValueError('external body font digest')
         entries.append((offset, length)); end=offset+length
     return entries
 
-def build(out):
+def build(out, miniapp=False):
     out.mkdir(parents=True, exist_ok=True)
     blob=bytearray(HEADER);entries=[]
     for file,symbol,bind in [('lv_font_cn_16.c','passport_body_glyph_bitmap','passport_bind_body'),('lv_font_cn_24.c','passport_nickname_compressed','passport_bind_nickname')]:
@@ -66,7 +67,8 @@ def build(out):
         pixels=list(im.getdata()); rgb=bytearray();alpha=bytearray()
         for r,g,b,a in pixels:
             rgb.extend(struct.pack('<H',((r>>3)<<11)|((g>>2)<<5)|(b>>3)));alpha.append(a)
-        data=rgb+alpha;entries.append((len(blob),len(data)));blob.extend(data);blob.extend(b'\xff'*(-len(blob)%4))
+        data = compact_faces.pack_face(rgb + alpha) if miniapp else rgb + alpha
+        entries.append((len(blob),len(data)));blob.extend(data);blob.extend(b'\xff'*(-len(blob)%4))
     if len(entries)!=2+AVATARS*FRAMES: raise ValueError('expected two fonts and twelve expression frames')
     korean_at = len(blob)
     blob.extend((ROOT/'assets/fonts/hangul20.bin').read_bytes())
@@ -79,14 +81,16 @@ def build(out):
         blob.extend(bytes(a for r,g,b,a in pixels))
     default_avatar_at=len(blob)
     blob.extend(Image.open(ROOT/'assets/avatars/avatar-01.png').convert('RGBA').tobytes('raw','BGRA'))
-    blob[:4]=b'CPR1';struct.pack_into('<II',blob,4,3,len(blob))
+    blob[:4]=b'CPR1';struct.pack_into('<II',blob,4,4 if miniapp else 3,len(blob))
     for i,e in enumerate(entries):struct.pack_into('<II',blob,16+i*8,*e)
     struct.pack_into('<I',blob,12,zlib.crc32(blob[16:]))
     digest=hashlib.sha256(blob).hexdigest(); total=len(blob)
-    blob.extend(b'\xff'*(SIZE-len(blob)));validate(blob)
+    if not miniapp:
+        blob.extend(b'\xff'*(SIZE-len(blob)))
+    validate(blob)
     (out/'companion.bin').write_bytes(blob)
     (out/'companion_pack_meta.h').write_text(f'#pragma once\n#define OFFICIAL_ICONS_OFFSET {icons_at}u\n#define DEFAULT_AVATAR_OFFSET {default_avatar_at}u\n#define HANGUL_TITLE_BYTES {len((ROOT/"assets/fonts/hangul20.bin").read_bytes())}u\n#define HANGUL_TITLE_OFFSET {korean_at}u\n#define COMPANION_SIZE {total}u\n#define COMPANION_CRC 0x{struct.unpack_from("<I",blob,12)[0]:08x}u\n#define COMPANION_SHA "{digest}"\n')
-    (out/'companion_catalog.json').write_text(json.dumps(dict(format='CPR1',version=3,portraits=AVATARS,frames_per_portrait=FRAMES,width=WIDTH,height=HEIGHT,used=total,size=SIZE,sha256=hashlib.sha256(blob).hexdigest(),entries=entries,body_font_bytes=len(body)),indent=2)+'\n')
+    (out/'companion_catalog.json').write_text(json.dumps(dict(format='CPR1',version=4 if miniapp else 3,portraits=AVATARS,frames_per_portrait=FRAMES,width=WIDTH,height=HEIGHT,used=total,size=len(blob),sha256=hashlib.sha256(blob).hexdigest(),entries=entries,body_font_bytes=len(body)),indent=2)+'\n')
     # Only device-mapped fonts gain an extra fallback; the source oracle stays independent.
     for file, size in [('lv_font_cn_16.c', 16), ('lv_font_cn_24.c', 20)]:
         path = out / file
@@ -96,4 +100,5 @@ def build(out):
         path.write_text('#include "presentation/hangul_font.h"\n' + source)
     print(f'Companion resources: {total}/{SIZE} bytes; fonts {entries[0][1]+entries[1][1]}, two animated faces {AVATARS*FRAMES*FRAME_BYTES}')
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);build(p.parse_args().output)
+    p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--miniapp',action='store_true')
+    args=p.parse_args();build(args.output,args.miniapp)

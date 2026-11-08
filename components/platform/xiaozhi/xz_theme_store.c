@@ -215,8 +215,11 @@ void xz_theme_boot(void) {
   assets = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS,
                                     "assets");
   cache = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, 0x42, "theme_cache");
-  if (!assets || assets->address != 0x41a000 || assets->size != XZ_THEME_LIMIT ||
-      assets->readonly || !cache || cache->address != 0x5e9000 || cache->size != XZ_CACHE_LIMIT ||
+  if (!assets || !cache ||
+#ifndef PASSPORT_MINIAPP
+      assets->address != 0x41a000 || cache->address != 0x5e9000 ||
+#endif
+      assets->size != XZ_THEME_LIMIT || assets->readonly || cache->size != XZ_CACHE_LIMIT ||
       cache->readonly) {
     assets = NULL;
     return;

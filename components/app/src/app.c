@@ -2693,7 +2693,7 @@ void app_run(void) {
     size_t pet_art_bytes = 0;
     if (!platform_pet_art_map(&pet_art_data, &pet_art_bytes) ||
         !bobo_art_bind(pet_art_data, pet_art_bytes)) {
-        ESP_LOGW(TAG, "Shared artwork unavailable: install matching petart.bin at 0x500000");
+        ESP_LOGW(TAG, "Shared artwork unavailable: install the matching petart resource for this build");
     }
     struct _lv_display_t *lvdisp = platform_lvgl_init(s_disp, &board);
     bool first_frame_armed = false;

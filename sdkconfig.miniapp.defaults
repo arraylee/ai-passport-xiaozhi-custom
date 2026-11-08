@@ -1,0 +1,2 @@
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions-miniapp.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions-miniapp.csv"
