@@ -1,4 +1,4 @@
-// Bootloader hook shared by every AI Passport community firmware derivative.
+// AI Passport protocol 4 installer entry for the XiaoZhi USB image.
 // A blank application boots the factory-installed permanent Recovery image.
 // Powering on with UP held enters Recovery after a short debounce.
 #include <stdbool.h>
@@ -8,6 +8,7 @@
 #include "bootloader_config.h"
 #include "bootloader_utility.h"
 #include "esp_err.h"
+#include "esp_image_format.h"
 #include "esp_log.h"
 #include "esp_rom_gpio.h"
 #include "esp_rom_sys.h"
@@ -23,13 +24,40 @@ extern esp_err_t bootloader_flash_read(size_t src_addr, void *dest, size_t size,
 #define RECOVERY_OFFSET       0x6C0000
 #define RECOVERY_SIZE         0x140000
 #define APPLICATION_OFFSET    0x10000
-#define ESP_IMAGE_MAGIC       0xE9
+#define INSTALL_JOURNAL       0x6B8000
+#define INSTALL_MARKER        0x49505234u
 
-static void boot_permanent_recovery(void)
+static bool has_image_header(size_t offset)
+{
+    uint32_t header;
+    return bootloader_flash_read(offset, &header, sizeof(header), true) == ESP_OK &&
+           (header & 0xff) == ESP_IMAGE_HEADER_MAGIC;
+}
+
+static bool install_in_progress(void)
+{
+    uint32_t word;
+    if (bootloader_flash_read(INSTALL_JOURNAL, &word, sizeof(word), true) != ESP_OK) {
+        return false;
+    }
+    // NOR starts erased. A power cut while writing the marker may leave some
+    // of its zero bits at one. A .17 portrait at this address reads 0x7958c886.
+    return word != UINT32_MAX && (word & INSTALL_MARKER) == INSTALL_MARKER;
+}
+
+static void try_permanent_recovery(const char *reason)
 {
     bootloader_state_t state = { 0 };
     state.factory.offset = RECOVERY_OFFSET;
     state.factory.size = RECOVERY_SIZE;
+    esp_image_metadata_t metadata;
+    // The SDK loader resets if its only candidate is invalid. A USB install
+    // can leave arbitrary old resources at this address, even an 0xe9 byte.
+    if (esp_image_verify(ESP_IMAGE_VERIFY_SILENT, &state.factory, &metadata) != ESP_OK) {
+        ESP_LOGW("recovery_boot", "Invalid Recovery image, continuing normal boot");
+        return;
+    }
+    ESP_LOGI("recovery_boot", "%s", reason);
     bootloader_utility_load_boot_image(&state, FACTORY_INDEX);
 }
 
@@ -39,19 +67,16 @@ void bootloader_hooks_include(void)
 
 void bootloader_after_init(void)
 {
-    uint32_t pending = 0xffffffff;
-    if (bootloader_flash_read(0x6b8000, &pending, sizeof(pending), true) == ESP_OK &&
-        pending != 0xffffffff) {
-        ESP_LOGI("recovery_boot", "Interrupted install: booting permanent recovery");
-        boot_permanent_recovery();
+    if (!has_image_header(RECOVERY_OFFSET)) {
+        return;
     }
-    uint32_t image_header = 0;
-    if (bootloader_flash_read(APPLICATION_OFFSET, &image_header,
-                              sizeof(image_header), true) == ESP_OK &&
-        (image_header & 0xff) != ESP_IMAGE_MAGIC) {
-        ESP_LOGI("recovery_boot", "No application: booting permanent recovery at 0x%x",
-                 RECOVERY_OFFSET);
-        boot_permanent_recovery();
+    if (install_in_progress()) {
+        try_permanent_recovery("Interrupted install: booting permanent recovery");
+        return;
+    }
+    if (!has_image_header(APPLICATION_OFFSET)) {
+        try_permanent_recovery("No application: booting permanent recovery");
+        return;
     }
 
     // GPIO0 has an external pull-up in the board's resistor ladder.
@@ -68,8 +93,6 @@ void bootloader_after_init(void)
         esp_rom_delay_us(10000);
     } while (result == 0);
     if (result == 1) {
-        ESP_LOGI("recovery_boot", "UP held: booting permanent recovery at 0x%x",
-                 RECOVERY_OFFSET);
-        boot_permanent_recovery();
+        try_permanent_recovery("UP held: booting permanent recovery");
     }
 }
