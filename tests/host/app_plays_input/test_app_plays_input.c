@@ -29,6 +29,8 @@ bool xiaozhi_start(bool setup) { assert(!lock_depth());forced_setup=setup;fake_x
 void xiaozhi_service(void) {}
 void xiaozhi_stop(void) { if(fake_xz_running) ++xz_stop_requests; }
 bool xiaozhi_stopped(void) { return !fake_xz_running; }
+static int radio_direction;
+void xiaozhi_radio_step(int direction) { radio_direction=direction; }
 void xiaozhi_talk(void) {}
 void xiaozhi_resume(void) {}
 void xiaozhi_interrupt(void) { xz_interrupts++; }
@@ -571,7 +573,12 @@ static void voice_navigation_fires_on_press_and_release(void) {
 }
 static void voice_settings_and_button_interruption(void) {
     reset_app();child_exited(NULL);pump();assert(launch(UI_PLAY_XIAOZHI));pump();
-    next_xz_action=UI_XZ_INTERRUPT;
+    fake_xz_phase=XZ_RADIO;assert(app_plays_voice_busy());next_xz_action=UI_XZ_RADIO_NEXT;
+    key(fake_ms+400,2,HAL_BTN_PRESS);key(fake_ms+100,2,HAL_BTN_RELEASE);key(fake_ms+180,2,HAL_BTN_CLICK);
+    assert(radio_direction==1);next_xz_action=UI_XZ_RADIO_PREV;
+    key(fake_ms+400,2,HAL_BTN_PRESS);key(fake_ms+100,2,HAL_BTN_RELEASE);key(fake_ms+180,2,HAL_BTN_CLICK);
+    assert(radio_direction==-1);fake_xz_phase=XZ_STANDBY;assert(!app_plays_voice_busy());
+    fake_xz_phase=XZ_READY;next_xz_action=UI_XZ_INTERRUPT;
     key(fake_ms+400,2,HAL_BTN_PRESS);key(fake_ms+100,2,HAL_BTN_RELEASE);key(fake_ms+180,2,HAL_BTN_CLICK);
     assert(xz_interrupts==1&&!xz_stop_requests&&!xz_restart);
     next_xz_action=UI_XZ_VOLUME;setting_value=60;

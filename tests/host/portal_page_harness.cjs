@@ -22,6 +22,17 @@ async function page(){
  return {e:elements,c:context,posts,calls,setScans:v=>{scans=v;},setScan:v=>{scanMode=v;},setPost:v=>{post=v;},setStatus:v=>{statuses=v;},choose:i=>{const row=elements.choices.children[i];if(row.onclick)return row.onclick();const input=row.children[0];input.checked=true;return input.onchange();},submit:()=>elements.f.onsubmit({preventDefault(){}}),next:async()=>{const i=timers.findIndex(t=>t.ms<=1500);assert(i>=0,'Expected another status poll');const t=timers.splice(i,1)[0];now+=t.ms;t.f();await tick();}};
 }
 (async()=>{
+ const manual=await page(),m=manual.e;
+ manual.setScans([]);await m.scan.onclick();m.manual.onclick();
+ assert.equal(m['manual-form'].hidden,false);assert.equal(m['near-panel'].hidden,true);
+ m['manual-name'].value='中'.repeat(11);m['manual-pass'].value='12345678';
+ await manual.submit();assert(!manual.posts.length&&m.r.textContent.includes('32'));
+ m['manual-name'].value=' Cam 隐藏 ';manual.setStatus([{state:'failed',error:'not_found'}]);
+ await manual.submit();assert.deepEqual(manual.posts[0],{ssid:' Cam 隐藏 ',password:'12345678'});
+ assert(m.r.textContent.includes('大小写')&&m['manual-name'].value===' Cam 隐藏 ');
+ m['manual-open'].checked=true;m['manual-open'].onchange();assert(m['manual-pw'].hidden);
+ manual.setStatus([{state:'connected',error:'none'}]);await manual.submit();
+ assert.deepEqual(manual.posts[1],{ssid:' Cam 隐藏 ',password:''});assert(m.r.textContent.includes('已连接并保存'));
  const p=await page(),e=p.e;
  assert.equal(e.choices.children.length,2);assert(e.choices.children[0].textContent.includes(evil));
  p.choose(0);assert(e.prompt&&e.prompt.open,'Selection must immediately open the password dialog');assert(e.p.focused,'Password gets focus from user selection');assert.equal(e.ssid.textContent,evil);assert(!e.pw.hidden);

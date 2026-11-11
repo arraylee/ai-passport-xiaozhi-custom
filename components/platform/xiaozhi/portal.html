@@ -14,18 +14,30 @@ button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visib
 #choices{display:grid;gap:10px;margin:10px 0}.network{display:flex;align-items:center;gap:12px;text-align:left;margin:0;padding:12px;border:2px solid #637660;background:#18231d;color:#f3efe3}
 .network.selected{border-color:#bad58c;background:#263722}.network::before{content:'';flex:0 0 22px;height:22px;border:2px solid #a9b9ad;border-radius:50%}.network.selected::before{border-color:#bad58c;background:#bad58c;box-shadow:inset 0 0 0 4px #18231d}
 .network-copy{min-width:0}.network-name{display:block;font-size:19px;font-weight:650;overflow-wrap:anywhere}.network-note{display:block;color:#c9d4cb;font-size:16px;font-weight:400}
-small{display:block;color:#a9b9ad;font-size:15px}#r{min-height:30px;color:#d8eab9}
+small{display:block;color:#a9b9ad;font-size:15px}#r:empty{display:none}#r{min-height:30px;color:#d8eab9}
 dialog{position:fixed;inset:auto;margin:0;top:var(--view-top,0px);left:0;width:100%;max-width:none;height:var(--view-height,100dvh);max-height:none;border:0;padding:12px;background:transparent;color:#f3efe3;overflow:hidden}
 dialog[open]{display:flex;align-items:center;justify-content:center}dialog::backdrop{background:#000b}
 .sheet{width:100%;max-width:416px;max-height:100%;overflow-y:auto;overscroll-behavior:contain;padding:22px;border:1px solid #637660;border-radius:18px;background:#18231d;box-shadow:0 16px 50px #0008}
 #ssid{margin:0 0 18px;color:#f3efe3;font-weight:650;overflow-wrap:anywhere;max-height:90px;overflow-y:auto}#hint{margin:12px 0;font-size:16px}#status{margin:12px 0;overflow-wrap:anywhere;color:#d8eab9;font-size:16px}#cancel{margin-bottom:0}
 @media(max-height:520px){dialog[open]{align-items:flex-start}.sheet{padding:16px}h2{font-size:21px}#ssid{max-height:52px;margin-bottom:10px}#hint{display:none}#status{margin:8px 0}}
+.tabs{display:flex;gap:4px;padding:4px;background:#1e2b24;border-radius:14px}.tabs button{margin:0;border:0;background:transparent;color:#b9c6bb;font-size:16px}.tabs button[aria-pressed=true]{background:#bad58c;color:#162018}
+#manual-form{margin:18px 0;padding:18px;background:#18231d;border-radius:16px;border:1px solid #415747}.tools{display:flex;align-items:center;justify-content:space-between}.tools label,.tools button{width:auto;font-size:15px;font-weight:400}.tools button{margin:0;border:0;background:transparent;color:#d8eab9}.tools input{vertical-align:middle;min-height:0;width:18px;height:18px;margin:0 6px 0 0}.network-name,#ssid{white-space:pre-wrap}
+header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #304237;padding:4px 0 15px;color:#d5e2d5;font:600 15px/1.3 system-ui}.identity{display:flex;align-items:center;gap:9px}.signal{border-radius:8px;background:#293a28;color:#bad58c;display:grid;place-items:center;width:28px;height:28px}.band{font-size:12px;letter-spacing:.04em;color:#b8c6bd}h1{font-size:30px;letter-spacing:-.04em;margin:22px 0 15px}.tabs button{background:transparent}.tabs button[aria-pressed=true]{background:#344732;color:#dcecce}.tools button{padding:6px}.tools{margin:3px 0}#manual-name+small{margin-bottom:16px;font-size:14px}
 </style>
-<h1>让 AI PASSPORT 连上网络</h1>
-<p>选择下面的 2.4G Wi-Fi，即可输入密码。</p>
+<header><span class="identity"><span class="signal" aria-hidden="true">◉</span>AI Passport</span><span class="band">2.4 GHz</span></header>
+<h1>连接 Wi-Fi</h1>
+<div class="tabs" role="group" aria-label="添加网络方式"><button id="near" type="button" aria-pressed="true">附近网络</button><button id="manual" type="button" aria-pressed="false">手动添加网络</button></div>
+<section id="near-panel">
 <fieldset id="networks" aria-describedby="r" disabled><legend>Wi-Fi 网络</legend><div id="choices" aria-busy="true"></div></fieldset>
 <button id="scan" class="secondary" type="button">重新扫描</button>
 <button id="resume" type="button" hidden>查看所选网络</button>
+</section>
+<form id="manual-form" hidden novalidate>
+<label for="manual-name">网络名称（SSID）</label><input id="manual-name" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="输入完整的 Wi-Fi 名称"><small>隐藏网络也可连接。大小写和空格须与路由器一致。</small>
+<label id="manual-pw" for="manual-pass">Wi-Fi 密码<input id="manual-pass" type="password" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+<div class="tools"><label><input id="manual-open" type="checkbox">无需密码</label><button id="show-pass" type="button" aria-pressed="false">显示密码</button></div>
+<button id="manual-connect" type="submit">连接网络</button></form>
+<button type="button" id="manual-check" class="secondary" hidden>检查连接结果</button>
 <p id="r" role="status" aria-live="polite"></p>
 <small>密码只保存在这台设备上。连接成功后，请查看设备屏幕，完成小智绑定和智能体设置。</small>
 <dialog id="prompt" aria-labelledby="title" aria-describedby="ssid hint">
@@ -43,6 +55,17 @@ dialog[open]{display:flex;align-items:center;justify-content:center}dialog::back
 <script>
 const form=document.getElementById('f'),networkField=document.getElementById('networks'),networkList=document.getElementById('choices'),password=document.getElementById('p'),passwordField=document.getElementById('pw'),scan=document.getElementById('scan'),connect=document.getElementById('connect'),result=document.getElementById('r'),prompt=document.getElementById('prompt'),ssid=document.getElementById('ssid'),hint=document.getElementById('hint'),status=document.getElementById('status'),cancel=document.getElementById('cancel'),resume=document.getElementById('resume'),check=document.getElementById('check');
 let networks=[],networkChoices=[],selectedId='',scanning=false,attempt=false,connected=false,uncertain=false,generation=0,pollTimer,failures=0,started=0;
+const byId=id=>document.getElementById(id),manualForm=byId('manual-form'),nameInput=byId('manual-name'),manualPass=byId('manual-pass'),openNet=byId('manual-open'),near=byId('near'),manual=byId('manual'),reveal=byId('show-pass');
+let hand=false;
+function mode(next){
+ if(attempt||connected)return;
+ hand=next;near.setAttribute('aria-pressed',String(!hand));manual.setAttribute('aria-pressed',String(hand));
+ byId('near-panel').hidden=hand;manualForm.hidden=!hand;
+ message(hand?'':(scanning?'正在扫描附近的 2.4G Wi-Fi…':'请选择附近的 Wi-Fi。'));selection();
+ if(hand)nameInput.focus();
+}
+near.onclick=()=>mode(false);manual.onclick=()=>mode(true);openNet.onchange=()=>{if(openNet.checked)manualPass.value='';selection();};
+reveal.onclick=()=>{const show=manualPass.type==='password';manualPass.type=show?'text':'password';reveal.setAttribute('aria-pressed',String(show));reveal.textContent=show?'隐藏密码':'显示密码';};
 function message(text){result.textContent=text;status.textContent=text;}
 function selected(){return networks.find(n=>n.id===selectedId);}
 function selection(){
@@ -51,6 +74,9 @@ function selection(){
  passwordField.hidden=!n||!n.secure;password.disabled=locked||!n||!n.secure;password.required=!!n&&n.secure;
  networkField.disabled=locked||!networks.length;networkList.setAttribute('aria-busy',String(scanning));scan.disabled=locked;connect.disabled=locked||!n;
  resume.hidden=!n||prompt.open;check.hidden=!uncertain;check.disabled=false;
+ near.disabled=manual.disabled=attempt||connected;
+ nameInput.disabled=openNet.disabled=byId('manual-connect').disabled=attempt||connected;
+ manualPass.disabled=attempt||connected||openNet.checked;byId('manual-pw').hidden=reveal.hidden=openNet.checked;byId('manual-check').hidden=!hand||!uncertain;
 }
 function openPrompt(){
  const n=selected();if(!n)return;ssid.textContent=n.ssid;hint.textContent=n.secure?'请输入路由器的 Wi-Fi 密码。':'此网络无需密码，点“连接网络”即可。';
@@ -76,14 +102,14 @@ async function refresh(){
  try{
   const response=await request('/networks');if(!response.ok)throw Error('scan');const data=await response.json();if(token!==generation)return;
   if(!Array.isArray(data.networks))throw Error('networks');networks=data.networks.filter(n=>n&&typeof n.id==='string'&&typeof n.ssid==='string'&&typeof n.secure==='boolean');
-  if(!selected()){selectedId='';password.value='';}showNetworks();message(networks.length?'请点选一个 Wi-Fi 网络。':'未找到 2.4G Wi-Fi，请靠近路由器后重新扫描。');
- }catch(e){if(token===generation)message('扫描失败，请确认手机仍连接设备热点，再点“重新扫描”。');}
- finally{if(token===generation){scanning=false;selection();}}
+  if(!selected()){selectedId='';password.value='';}showNetworks();if(!hand)message(networks.length?'请点选一个 Wi-Fi 网络。':'未找到 2.4G Wi-Fi，请靠近路由器后重新扫描。');
+ }catch(e){if(token===generation&&!hand)message('扫描失败，请确认手机仍连接设备热点，再点“重新扫描”。');}
+ finally{scanning=false;selection();}
 }
 function unknownResult(){uncertain=true;message('连接结果尚未确认。设备热点可能已关闭，请查看设备屏幕；若仍需配网，重新连接设备热点后检查连接结果。');selection();}
 function finishFailure(error){
  attempt=false;uncertain=false;
- const errors={auth:'连接失败，请检查 Wi-Fi 密码后重试。',not_found:'未找到所选 Wi-Fi，请靠近路由器后重试。',timeout:'连接超时，请确认路由器可用后重试。',save_failed:'网络信息未能保存，请重试。',unknown:'连接未成功，请检查网络和密码后重试。'};
+ const errors={auth:'连接失败，请检查 Wi-Fi 密码后重试。',not_found:hand?'未找到此网络，请核对名称、大小写和 2.4 GHz 频段后重试。':'未找到所选 Wi-Fi，请靠近路由器后重试。',timeout:'连接超时，请确认路由器可用后重试。',save_failed:'网络信息未能保存，请重试。',unknown:'连接未成功，请检查网络和密码后重试。'};
  message(errors[error]||errors.unknown);selection();
 }
 async function poll(token){
@@ -100,13 +126,17 @@ async function poll(token){
  selection();pollTimer=setTimeout(()=>poll(token),1000);
 }
 check.onclick=()=>{clearTimeout(pollTimer);failures=0;started=Date.now();return poll(generation);};scan.onclick=refresh;
-form.onsubmit=async(e)=>{
- e.preventDefault();if(scanning||attempt||connected)return;const n=selected();if(!n)return;
- const value=n.secure?password.value:'',length=new TextEncoder().encode(value).length;
- if(n.secure&&(length<8||length>63)){message('密码需要 8–63 字节，请检查后重试。');password.focus();return;}
+byId('manual-check').onclick=check.onclick;
+form.onsubmit=manualForm.onsubmit=async(e)=>{
+ e.preventDefault();if((!hand&&scanning)||attempt||connected)return;const n=hand?{ssid:nameInput.value,secure:!openNet.checked}:selected();if(!n)return;
+ const encoder=new TextEncoder(),bytes=encoder.encode(n.ssid).length;
+ if(hand&&(!bytes||bytes>32||n.ssid.includes('\0'))){message('网络名称需要 1–32 个 UTF-8 字节，请检查后重试。');nameInput.focus();return;}
+ const pass=hand?manualPass:password;
+ const value=n.secure?pass.value:'',length=new TextEncoder().encode(value).length;
+ if(n.secure&&(length<8||length>63)){message('密码需要 8–63 字节，请检查后重试。');pass.focus();return;}
  attempt=true;uncertain=false;failures=0;started=Date.now();const token=++generation;clearTimeout(pollTimer);selection();message('正在提交连接请求…');
  try{
-  const response=await request('/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid_hex:n.id,password:value})});if(token!==generation)return;
+  const response=await request('/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(hand?{ssid:n.ssid,password:value}:{ssid_hex:n.id,password:value})});if(token!==generation)return;
   if(response.status===400){attempt=false;message('网络或密码格式无效，请检查后重试。');selection();return;}
   if(response.status!==202&&response.status!==409){unknownResult();return;}
  }catch(e){if(token!==generation)return;}

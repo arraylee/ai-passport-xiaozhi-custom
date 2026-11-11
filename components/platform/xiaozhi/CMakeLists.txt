@@ -3,11 +3,17 @@ set(VAD "vendor/webrtcvad")
 set(ECHO_SOURCES "${SPX}/libspeexdsp/mdf.c" "${SPX}/libspeexdsp/fftwrap.c" "${SPX}/libspeexdsp/kiss_fft.c" "${SPX}/libspeexdsp/kiss_fftr.c")
 file(GLOB VAD_SOURCES "${VAD}/webrtc/common_audio/vad/*.c" "${VAD}/webrtc/common_audio/signal_processing/*.c" "${VAD}/webrtc/common_audio/third_party/spl_sqrt_floor/*.c")
 list(FILTER VAD_SOURCES EXCLUDE REGEX "/(webrtc_vad|spl_init|complex_fft|real_fft)\\.c$")
-idf_component_register(SRCS "xz_mcp.c" "xz_theme.c" "xz_theme_font.c" "xz_theme_image.c" "xz_theme_store.c" "xz_theme_transfer.c" "xz_quiet.c" "xz_prompt.c" "xz_protocol.c" "xz_portal.c" "xz_wifi_profiles.c" "xz_network.c" "xz_cloud_cache.c" "xiaozhi.c" "xz_codec_memory.c" "xz_echo.c" "xz_bargein.c" "xz_downsample.c" "xz_capture.c" "xz_dsp_check.c" ${ECHO_SOURCES} ${VAD_SOURCES}
-    INCLUDE_DIRS "include" PRIV_INCLUDE_DIRS "." "../../ui/presentation/vendor/puff" "${SPX}/include" "${SPX}/libspeexdsp" "${VAD}" EMBED_TXTFILES "portal.html" EMBED_FILES "farewell_zh.adpcm" "welcome_zh.rice" "startup_magicbox.adpcm"
+idf_component_register(SRCS "xz_mcp.c" "xz_weather.c" "xz_stations.c" "xz_web.c" "xz_radio_player.c" "xz_theme.c" "xz_theme_font.c" "xz_theme_image.c" "xz_theme_store.c" "xz_theme_transfer.c" "xz_quiet.c" "xz_prompt.c" "xz_protocol.c" "xz_portal.c" "xz_wifi_profiles.c" "xz_network.c" "xz_cloud_cache.c" "xiaozhi.c" "xz_codec_memory.c" "xz_echo.c" "xz_bargein.c" "xz_downsample.c" "xz_capture.c" "xz_dsp_check.c" ${ECHO_SOURCES} ${VAD_SOURCES}
+    INCLUDE_DIRS "include" PRIV_INCLUDE_DIRS "." "../../ui/presentation/vendor/puff" "${SPX}/include" "${SPX}/libspeexdsp" "${VAD}" EMBED_FILES "farewell_zh.adpcm" "welcome_zh.rice" "startup_magicbox.adpcm"
     REQUIRES ports
     PRIV_REQUIRES services esp_wifi esp_netif esp_event esp_http_client esp_http_server
         mqtt mbedtls esp_partition esp_system nvs_flash esp_timer esp_app_format esp_hw_support json esp_audio_codec)
+# Serve the captive portal directly from flash, without an inflate buffer on the card.
+set(portal_gz "${CMAKE_CURRENT_BINARY_DIR}/portal.html.gz")
+add_custom_command(OUTPUT "${portal_gz}"
+    COMMAND "${PYTHON}" -c "import gzip,pathlib,sys; pathlib.Path(sys.argv[2]).write_bytes(gzip.compress(pathlib.Path(sys.argv[1]).read_bytes(),mtime=0))" "${CMAKE_CURRENT_SOURCE_DIR}/portal.html" "${portal_gz}"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/portal.html" VERBATIM)
+target_add_binary_data(${COMPONENT_LIB} "${portal_gz}" BINARY)
 set_source_files_properties(${ECHO_SOURCES} PROPERTIES COMPILE_DEFINITIONS "FIXED_POINT;USE_KISS_FFT;EXPORT=;OS_SUPPORT_CUSTOM" COMPILE_OPTIONS "-O2;-fwrapv")
 set_source_files_properties(${VAD_SOURCES} PROPERTIES COMPILE_DEFINITIONS "WEBRTC_POSIX;NDEBUG" COMPILE_OPTIONS "-O2;-fwrapv")
 # The per-sample FIR/capture/VAD wrappers are also on the 8ms audio deadline,
@@ -18,3 +24,8 @@ set_source_files_properties("xz_capture.c" "xz_downsample.c" "xz_bargein.c" "xz_
 # The product calls only the bounded fixed-point FFT; keep the warning visible.
 set_property(SOURCE "${SPX}/libspeexdsp/fftwrap.c" APPEND PROPERTY COMPILE_OPTIONS -Wno-error=maybe-uninitialized)
 target_compile_options(${COMPONENT_LIB} PRIVATE -fstack-usage)
+target_link_libraries(${COMPONENT_LIB} INTERFACE
+    "-Wl,--wrap=esp_mbedtls_mem_calloc" "-Wl,--wrap=esp_mbedtls_mem_free")
+if(PASSPORT_TEST_SERVICES)
+    target_compile_definitions(${COMPONENT_LIB} PUBLIC PASSPORT_TEST_SERVICES=1)
+endif()

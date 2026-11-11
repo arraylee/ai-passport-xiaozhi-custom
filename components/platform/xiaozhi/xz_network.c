@@ -167,11 +167,12 @@ void xz_identity(char mac[18], char uuid[37]) {
   }
   nvs_close(h);
 }
-extern const char portal[] asm("_binary_portal_html_start");
+extern const char portal[] asm("_binary_portal_html_gz_start"), portal_end[] asm("_binary_portal_html_gz_end");
 static esp_err_t portal_get(httpd_req_t *r) {
   httpd_resp_set_hdr(r, "Cache-Control", "no-store");
   httpd_resp_set_type(r, "text/html; charset=utf-8");
-  return httpd_resp_send(r, portal, HTTPD_RESP_USE_STRLEN);
+  httpd_resp_set_hdr(r, "Content-Encoding", "gzip");
+  return httpd_resp_send(r, portal, portal_end - portal);
 }
 static esp_err_t portal_redirect(httpd_req_t *r, httpd_err_code_t error) {
   (void)error;
@@ -543,6 +544,14 @@ bool xz_wifi_open(bool setup, atomic_bool *cancel, xz_status_fn status,
   if (!sta)
     return false;
   wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
+  // Live TCP needs burst reception as well as the low-rate voice path.
+  // Keep aggregation bounded to four frames and provide one DMA slot per
+  // frame; dynamic buffers are allocated only while packets are in flight.
+  init.dynamic_rx_buf_num = 8;
+  init.static_rx_buf_num = 4;
+  init.ampdu_rx_enable = 1;
+  init.ampdu_tx_enable = 1;
+  init.rx_ba_win = 4;
   if (esp_wifi_init(&init) != ESP_OK)
     return false;
   wifi_inited = true;

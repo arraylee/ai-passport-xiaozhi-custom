@@ -18,7 +18,7 @@ BOUNDARY = r'''
 #include <setjmp.h>
 #define ESP_LOGI(...) ((void)0)
 #define pdMS_TO_TICKS(x) (x)
-enum { XZ_LISTEN, XZ_FAREWELL, XZ_STANDBY, XZ_WAKING, XZ_ERROR };
+enum { XZ_LISTEN, XZ_FAREWELL, XZ_STANDBY, XZ_WAKING, XZ_ERROR, XZ_RADIO };
 typedef struct { unsigned quiet_samples; } xz_quiet_t;
 static struct {int phase;} working;
 static atomic_bool cancel, requested_resume, requested_end, requested_interrupt, worker_finished;
@@ -27,6 +27,24 @@ static unsigned scenario, sessions, prompts, parked, closed, awaiting, wakes;
 static uint64_t tick;
 static bool live, link;
 static jmp_buf exit_worker;
+static atomic_int radio_step;
+static unsigned streams;
+static bool retained;
+static void codec_arena_metric(unsigned n){assert(n==8&&retained);}
+static bool xz_codec_memory_end(void){assert(retained);retained=false;return true;}
+typedef struct {const char *name;} xz_station_t;
+static int config;
+static void xz_radio_unqueue(void){}
+static void xz_radio_forget(void){}
+static const xz_station_t *xz_radio_select(int step){
+ static xz_station_t a={"A"},b={"B"}; return step?&b:&a;
+}
+static bool xz_radio_stream(void *cfg,const xz_station_t *station){
+ assert(cfg==&config&&!live&&link&&working.phase==XZ_RADIO&&retained);
+ if(!streams++) {assert(!strcmp(station->name,"A"));radio_step=1;}
+ else {assert(!strcmp(station->name,"B"));requested_end=true;}
+ return false;
+}
 static uint64_t ms(void){return tick;}
 static void status(int p,const char *s){
  working.phase=p;
@@ -53,6 +71,7 @@ static session_end_t run_session(bool *wifi_up,xz_quiet_t *clock,unsigned *missi
  if(scenario==5)assert(clock->quiet_samples==320000);
  if(scenario==7){tick+=500;return SESSION_RENEW;}
  if(scenario==8){tick+=5000;return SESSION_AUDIO_LOST;}
+ if(scenario>=9){retained=true;if(scenario==10)cancel=true;if(scenario==11)requested_end=true;return SESSION_RADIO;}
  if(scenario==2)return SESSION_PARK;
  if(scenario==6)requested_end=true;
  if(scenario==0||scenario==5){clock->quiet_samples=480000;return SESSION_QUIET_BYE;}
@@ -65,12 +84,13 @@ class FarewellRouter(unittest.TestCase):
         source=(ROOT/'components/platform/xiaozhi/xiaozhi.c').read_text()
         enum=re.search(r'typedef enum \{ SESSION_CLOSED[^;]*;',source).group()
         main=r'''
-int main(void){for(scenario=0;scenario<9;scenario++){
+int main(void){for(scenario=0;scenario<12;scenario++){
  sessions=prompts=parked=closed=awaiting=wakes=0;cancel=requested_resume=requested_end=worker_finished=false;link=live=false;tick=0;
  if(!setjmp(exit_worker))run(NULL);
- assert(worker_finished&&closed==1&&!live&&!link);
- assert(prompts==((scenario==2||scenario==6||scenario==7||scenario==8)?0:1));
- assert(parked==(scenario==3?0:1));if(scenario==5)assert(sessions==3);if(scenario==7)assert(sessions==4);if(scenario==8)assert(sessions==3&&wakes==2);
+ assert(worker_finished&&closed==1&&!live&&!link&&!retained);
+ assert(prompts==((scenario==2||scenario==6||scenario==7||scenario==8||scenario>=9)?0:1));
+ if(scenario==9)assert(streams==2&&sessions==2);
+ assert(parked==((scenario==3||scenario==10)?0:1));if(scenario==5)assert(sessions==3);if(scenario==7)assert(sessions==4);if(scenario==8)assert(sessions==3&&wakes==2);
 }puts("Quiet, intent, manual end, full stop, output failure, renewal, duplicate stop and rapid-close recovery PASS");}
 '''
         with tempfile.TemporaryDirectory() as tmp:

@@ -16,9 +16,11 @@ bool platform_pet_art_map(const void **data, size_t *size) {
     const esp_partition_t *part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, 0x40, "petart");
     if (!part || part->encrypted ||
 #ifndef PASSPORT_MINIAPP
-        part->address != 0x500000 || !part->readonly ||
+        part->address != 0x500000 || !part->readonly || part->size != 0xe9000
+#else
+        part->size != 0xdd000
 #endif
-        part->size != 0xe9000) {
+        ) {
         ESP_LOGW(TAG, "Missing or incompatible petart partition"); return false;
     }
     uint8_t header[64];

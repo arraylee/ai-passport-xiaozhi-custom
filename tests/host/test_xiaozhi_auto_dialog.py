@@ -23,6 +23,16 @@ BOUNDARY=r'''
 #define pdMS_TO_TICKS(x) (x)
 enum {XZ_READY,XZ_LISTEN,XZ_THINK,XZ_SPEAK,XZ_ERROR,XZ_OFF};
 static struct { int phase; unsigned emotion; char detail[160]; } working;
+static const char *xz_arg_text(const cJSON *obj,const char *key){
+ const cJSON *v=cJSON_GetObjectItemCaseSensitive(obj,key);return cJSON_IsString(v)?v->valuestring:"";
+}
+static atomic_bool natural_interrupt;
+static bool xz_radio_queued(void){return false;}
+static void codec_arena_metric(unsigned step){assert(step==6||step==7);}
+static bool xz_codec_memory_begin(void){return true;}
+static bool xz_codec_memory_end(void){return true;}
+static bool xz_codec_memory_network_only(void){return true;}
+static void *xz_capture_create(void){return (void*)1;}
 static unsigned mcp_seen;
 static void handle_mcp(void *c, const cJSON *j){(void)c;assert(j);mcp_seen++;}
 static int xz_emotion_index(const char *s){return !strcmp(s,"happy")?1:-1;}
@@ -30,7 +40,7 @@ static bool xz_theme_reboot_requested(void){return false;}
 static void esp_restart(void){assert(0);}
 
 static atomic_bool running,cancel,requested_talk,requested_interrupt,requested_end;
-enum {SESSION_CLOSED,SESSION_PARK,SESSION_RENEW,SESSION_QUIET_BYE,SESSION_INTENT_BYE,SESSION_AUDIO_LOST};
+enum {SESSION_CLOSED,SESSION_PARK,SESSION_RENEW,SESSION_QUIET_BYE,SESSION_INTENT_BYE,SESSION_AUDIO_LOST,SESSION_RADIO};
 typedef struct {unsigned quiet_samples;} xz_quiet_t;
 typedef union { int16_t playback[1440]; struct {int16_t samples[960];} listen; } xz_voice_pcm_t;
 static int last_end;
@@ -187,7 +197,7 @@ class AutoDialogTest(unittest.TestCase):
   command=function(s,'command').replace('bool ok = s && send_text(c, s);','bool ok = s && send_text(c, s);\n  if(ok&&!strcmp(type,"listen")&&state&&!strcmp(state,"start")){starts++;assert(!dec_live);}\n  if(ok&&!strcmp(type,"listen")&&state&&!strcmp(state,"stop"))stops++;\n  if(ok&&!strcmp(type,"abort"))aborts++;')
   protocol=(ROOT/'components/platform/xiaozhi/xz_protocol.c').read_text()
   code=BOUNDARY.replace('typedef struct {char data[];} invalid_dummy_t;\n','')+'\n#include "xz_protocol.h"\n'+command+function(s,'xiaozhi_talk')+function(s,'xiaozhi_interrupt')+function(s,'discard_reply_audio')+function(s,'send_preroll')+function(s,'reply_audio_missing')
-  setup='''static void run_loop(void){xz_quiet_t clock={0},*quiet=&clock;int outcome=SESSION_CLOSED;channel_t channel={.rate=24000},*c=&channel;void *encoder=NULL,*decoder=NULL;bool audio_owned=false,echo_owned=false,ignore_aborted_tts=false,pending_preroll=false;xz_capture_t*capture=scenario>=19?NULL:(void*)1;uint32_t capture_peak_us=0,decode_peak_us=0;uint8_t packet[XZ_PACKET_MAX+16],*opus=packet+16;xz_voice_pcm_t storage={0},*audio_buffer=&storage;int16_t *pcm=storage.playback;unsigned saved_avatar=0;uint64_t last_action=0,listen_at=0,last_audio=0;unsigned missing_count=1,*missing_replies=&missing_count;bool tts_text=false,tts_stop=false,encoder_measured=false,decoder_measured=false;uint32_t tts_received=0,tts_valid=0,tts_written=0;working.phase=XZ_READY;'''
+  setup='''static void run_loop(void){xz_quiet_t clock={0},*quiet=&clock;int outcome=SESSION_CLOSED;channel_t channel={.rate=24000},*c=&channel;void *encoder=NULL,*decoder=NULL;bool codec_memory_owned=true,audio_owned=false,echo_owned=false,ignore_aborted_tts=false,pending_preroll=false;xz_capture_t*capture=scenario>=19?NULL:(void*)1;uint32_t capture_peak_us=0,decode_peak_us=0;uint8_t packet[XZ_PACKET_MAX+16],*opus=packet+16;xz_voice_pcm_t storage={0},*audio_buffer=&storage;int16_t *pcm=storage.playback;unsigned saved_avatar=0;uint64_t last_action=0,listen_at=0,last_audio=0;unsigned missing_count=1,*missing_replies=&missing_count;bool tts_text=false,tts_stop=false,encoder_measured=false,decoder_measured=false;uint32_t tts_received=0,tts_valid=0,tts_written=0;working.phase=XZ_READY;'''
   prefix=run[run.index('  last_action = ms(); // Provisioning'):run.index('  while (!atomic_load(&cancel) && !atomic_load(&c->failed))')]
   code=code.replace('#define pdMS_TO_TICKS(x) (x)', '#define pdMS_TO_TICKS(x) (x)\n#define ESP_LOGI(tag,...) record(__VA_ARGS__)')
   code+=setup+prefix+loop+cleanup+'last_end=outcome;}\n'+CASES

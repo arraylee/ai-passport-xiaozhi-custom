@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import struct
 
+from body_font_pack import split as split_fonts
+from pet_art_pack import validate_pack
 from compact_faces import STRIPS
 from companion_pack import validate as validate_companion
 
@@ -104,7 +106,13 @@ def build(directory):
     face_sha = hashlib.sha256(faces).hexdigest()
     check(("COMPANION-SHA256:" + face_sha).encode() in payloads["app"], "Mismatched face pack")
     body = (directory / "companion/body_font.bin").read_bytes()
-    check(payloads["petart"][0x10000:] == body and
+    catalog = json.loads((directory / "petart_catalog.json").read_text())
+    sprites, bundled_font = split_fonts(payloads["petart"], catalog)
+    validate_pack(sprites, catalog)
+    check(catalog["capacity"] == parts["petart"][3] and
+          (catalog["body_font"]["offset_in_partition"] == 0x10000 or catalog["offset"] == parts["petart"][2]),
+          "Mismatched sprite partition")
+    check(bundled_font == body and
           ("BODYFONT-SHA256:" + hashlib.sha256(body).hexdigest()).encode() in payloads["app"],
           "Mismatched body font")
     check(len(image) < MAX_DOWNLOAD, "Mini-program download exceeds the size goal")

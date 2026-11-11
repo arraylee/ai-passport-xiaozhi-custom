@@ -1,5 +1,22 @@
 #include "xz_protocol.h"
 #include <string.h>
+const char *xz_display_text(const char *text) {
+  if (!text) return "";
+  if (strstr(text, "self.weather.") || strstr(text, "get_forecast") ||
+      strstr(text, "weather.get_forecast")) return "正在查询天气";
+  if (strstr(text, "self.radio.") || strstr(text, "list_stations") ||
+      strstr(text, "play_station")) return "正在查找电台";
+  // A few providers expose the call's arguments as a separate subtitle.
+  const char *p = text;
+  while (*p == ' ' || *p == '\n' || *p == '\r' || *p == '\t') p++;
+  if (*p == '{' || *p == '[' || !strncmp(p, "```json", 7) ||
+      !strncmp(p, "<tool_call", 10)) {
+    if (strstr(p, "\"city\"") && !strstr(p, "\"station\"")) return "正在查询天气";
+    if (strstr(p, "\"station\"") || strstr(p, "\"query\"")) return "正在查找电台";
+    if (strstr(p, "\"tool_calls\"") || strstr(p, "\"arguments\"")) return "正在查询";
+  }
+  return text;
+}
 static int hex(char c) {
   if (c >= '0' && c <= '9')
     return c - '0';

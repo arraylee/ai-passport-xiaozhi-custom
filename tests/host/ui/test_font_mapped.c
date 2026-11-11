@@ -15,7 +15,7 @@ static uint8_t *companion_data,*body_data;
 static unsigned maps_live,maps_total,fault;
 #ifdef PASSPORT_MINIAPP
 static esp_partition_t art_part={0x3b9000,0x194000,false,false};
-static esp_partition_t font_part={0x2d0000,0xe9000,false,false};
+static esp_partition_t font_part={0x2dc000,0xdd000,false,false};
 #else
 static esp_partition_t art_part={0x600000,0x200000,true,false};
 static esp_partition_t font_part={0x500000,0x100000,true,false};
@@ -33,7 +33,7 @@ int esp_partition_mmap(const esp_partition_t *part,size_t offset,size_t size,int
     if(fault==bit+2)return -1;
     assert(!(maps_live&bit));
     if(bit==1){assert(offset==0&&size<=0x200000);*out=companion_data;}
-    else {assert(part==&font_part&&offset==0x10000&&size==BODY_FONT_SIZE);*out=body_data;}
+    else {assert(part==&font_part&&offset==BODY_FONT_OFFSET&&size==BODY_FONT_SIZE);*out=body_data;}
     *handle=bit;maps_live|=bit;maps_total++;return 0;
 }
 void esp_partition_munmap(esp_partition_mmap_handle_t value){assert(maps_live&value);maps_live&=~value;}

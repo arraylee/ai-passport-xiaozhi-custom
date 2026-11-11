@@ -40,7 +40,7 @@ def build(out, miniapp=False):
     for file,symbol,bind in [('lv_font_cn_16.c','passport_body_glyph_bitmap','passport_bind_body'),('lv_font_cn_24.c','passport_nickname_compressed','passport_bind_nickname')]:
         source=(ROOT/'components/ui/presentation/src'/file).read_text()
         if bind.endswith('body'):
-            body, source = body_font_pack.build(source, out)
+            body, source = body_font_pack.build(source, out, 0x4000 if miniapp else body_font_pack.OFFSET)
             data = hashlib.sha256(body).digest()
         else:
             data=bytes(numbers(array_data(source)[symbol][1]))

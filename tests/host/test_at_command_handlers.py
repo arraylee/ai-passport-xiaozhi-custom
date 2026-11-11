@@ -40,7 +40,7 @@ static bool decode_busy, capture_busy, save_ok=true, erase_ok=true, image_ok=tru
 static unsigned saves, audio_sets, erased, images, rebooted, delay_ms, activity, acknowledgements, flushes, identity_reads;
 static unsigned voice_stops,voice_interrupts,natural_sets;
 static bool natural,voice_running,natural_save_fail;
-enum {XZ_READY,XZ_LISTEN,XZ_SPEAK,XZ_THINK,XZ_STANDBY};
+enum {XZ_READY,XZ_LISTEN,XZ_SPEAK,XZ_THINK,XZ_STANDBY,XZ_RADIO};
 typedef struct {bool natural_interrupt; int phase;} xz_view_t;
 static void xiaozhi_talk(void) {}
 static void xiaozhi_resume(void) {}

@@ -21,6 +21,15 @@ BOUNDARY = r'''
 #define ESP_LOGW(...) ((void)0)
 enum {XZ_THINK, XZ_SPEAK, XZ_LISTEN, XZ_READY, XZ_ERROR, XZ_OFF};
 static struct { int phase; unsigned emotion; char detail[160]; } working;
+static const char *xz_arg_text(const cJSON *obj,const char *key){
+ const cJSON *v=cJSON_GetObjectItemCaseSensitive(obj,key);return cJSON_IsString(v)?v->valuestring:"";
+}
+static atomic_bool natural_interrupt;
+static bool station_queued;
+static unsigned arena_begins,arena_ends;
+static bool xz_radio_queued(void){return station_queued;}
+static void codec_arena_metric(unsigned step){assert(step==6||step==7);}
+static void *xz_capture_create(void){return (void*)1;}
 static unsigned mcp_seen;
 static void handle_mcp(void *c, const cJSON *j){(void)c;assert(j);mcp_seen++;}
 static int xz_emotion_index(const char *s){return !strcmp(s,"happy")?1:-1;}
@@ -28,7 +37,7 @@ static bool xz_theme_reboot_requested(void){return false;}
 static void esp_restart(void){assert(0);}
 
 static atomic_bool cancel,requested_interrupt,requested_talk;
-enum {SESSION_CLOSED,SESSION_PARK,SESSION_RENEW,SESSION_QUIET_BYE,SESSION_INTENT_BYE,SESSION_AUDIO_LOST};
+enum {SESSION_CLOSED,SESSION_PARK,SESSION_RENEW,SESSION_QUIET_BYE,SESSION_INTENT_BYE,SESSION_AUDIO_LOST,SESSION_RADIO};
 static struct {unsigned quiet_samples;} window,*quiet=&window;
 static int outcome;static atomic_bool requested_end;
 static bool pending_preroll;
@@ -46,7 +55,11 @@ static void release_audio(void *p){(void)p;assert(audio_owned);audio_owned=false
 static struct {void (*release_audio)(void*);void *user,*audio;} config={release_audio,NULL,(void*)1};
 static int hal_audio_set_echo_capture(void *a,bool on){assert(a&&!on);return 0;}
 static bool tts_stop, tts_text, parse_fail, ignore_aborted_tts;
-static void *decoder;
+static void *decoder,*capture;
+static bool echo_owned,codec_memory_owned=true;
+static int hal_audio_set_out_mute(void *p,bool b){(void)p;(void)b;return 0;}
+static void esp_opus_dec_close(void *p){(void)p;}
+static void xz_capture_destroy(void *p){(void)p;}
 #define MSG_DONTWAIT 1
 enum {CHANNEL_CONTROL_PARSE=99};
 const char *channel_error_text(void *c){(void)c;return "control parse failed";}
@@ -105,10 +118,22 @@ int main(void) {
     assert(!xz_is_farewell("不要说拜拜") && !xz_is_farewell("拜拜是什么意思"));
     reset(); messages[count++]="{\"type\":\"mcp\"}"; messages[count++]="{\"type\":\"llm\",\"emotion\":\"happy\"}";
     dispatch(); assert(mcp_seen==1 && working.emotion==1 && working.phase==XZ_THINK);
+    reset();working.phase=XZ_LISTEN;audio_owned=true;encoder=(void*)1;codec_memory_owned=true;natural_interrupt=true;
+    messages[count++]="{\"type\":\"mcp\",\"session_id\":\"current\",\"payload\":{\"method\":\"tools/call\",\"params\":{\"name\":\"self.weather.get_forecast\"}}}";
+    dispatch();assert(working.phase==XZ_THINK&&!audio_owned&&!encoder&&capture==((void*)1)&&!arena_begins&&!arena_ends&&codec_memory_owned);
+    reset();station_queued=true;messages[count++]="{\"type\":\"mcp\",\"payload\":{\"method\":\"tools/call\",\"params\":{\"name\":\"self.radio.play_station\"}}}";
+    dispatch();assert(outcome==SESSION_RADIO&&!capture&&codec_memory_owned&&!arena_ends&&!arena_begins);
+    station_queued=false;natural_interrupt=false;
     reset(); cancel=true; dispatch(); assert(!udp_reads);
     reset();messages[count++]="{\"type\":\"stt\",\"text\":\"valid message\"}";parse_fail=true;
     dispatch();assert(working.phase==XZ_ERROR && !udp_reads && head==1);
     reset();messages[count++]="{";dispatch();assert(working.phase==XZ_ERROR && !udp_reads);
+    assert(!strcmp(xz_display_text("self.weather.get_forecast({\"city\":\"北京\"})"),"正在查询天气"));
+    assert(!strcmp(xz_display_text("{\"city\":\"深圳\"}"),"正在查询天气"));
+    assert(!strcmp(xz_display_text("<tool_call>self.radio.play_station</tool_call>"),"正在查找电台"));
+    assert(!strcmp(xz_display_text("深圳今天晴，二十度。"),"深圳今天晴，二十度。"));
+    assert(!strcmp(xz_display_text("天气工具暂时不可用，请稍后再试。"),"天气工具暂时不可用，请稍后再试。"));
+    assert(!strcmp(xz_display_text("```c\nint x=1;\n```"),"```c\nint x=1;\n```"));
 }
 '''
 

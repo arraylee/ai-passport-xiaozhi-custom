@@ -7,7 +7,7 @@
 #include <string.h>
 #include "xiaozhi_volume_digits.inc"
 static struct {
-  lv_obj_t *root, *previous, *portrait, *message, *badge;
+  lv_obj_t *root, *previous, *portrait, *message, *badge, *radio_meter;
   lv_obj_t *choice[7], *caption[7], *icon[7], *volume_value, *volume_bar;
   lv_timer_t *motion;
   ui_battery_icon_t battery;
@@ -16,7 +16,7 @@ static struct {
   unsigned page, selection, frame, blink_cycle;
   unsigned edit_volume, menu_first;
   uint32_t expression_at, blink_started, blink_delay;
-  bool greeting, setting_error, welcome_drawn, official_dark;
+  bool greeting, setting_error, welcome_drawn, official_dark, radio_started;
   const xz_theme_t *installed;
 } X;
 static void welcome_drawn(lv_event_t *event) { (void)event; X.welcome_drawn = true; }
@@ -66,6 +66,7 @@ static const char *phase_name(xz_phase_t p) {
     return "在你身边";
   case XZ_THINK:
     return "想一想";
+  case XZ_RADIO: return "正在听广播";
   case XZ_SPEAK:
     return "和你说话";
   case XZ_ERROR:
@@ -86,7 +87,7 @@ static const char *phase_name(xz_phase_t p) {
 static unsigned chat_control_count(xz_phase_t phase) {
   if (phase == XZ_WELCOME || phase == XZ_BOOT) return 1;
   return phase == XZ_FAREWELL || phase == XZ_WAKING || phase == XZ_STANDBY || phase == XZ_READY || phase == XZ_LISTEN ||
-         phase == XZ_THINK || phase == XZ_SPEAK ? 3 : 2;
+         phase == XZ_THINK || phase == XZ_SPEAK || phase == XZ_RADIO ? 3 : 2;
 }
 static lv_obj_t *text(const char *s, int x, int y, int w, const lv_font_t *font,
                       uint32_t color) {
@@ -158,7 +159,31 @@ static void control(const char *s, unsigned i, unsigned count, int y) {
     X.icon[i] = ui_theme_text(box, LV_SYMBOL_WIFI, 35, 9, 22, &lv_font_montserrat_14,
                              X.selection == i ? XZ_UI_ON_ACCENT : XZ_UI_ACCENT);
 }
+static void radio_draw(lv_event_t *event) {
+  lv_area_t area; lv_obj_get_coords(lv_event_get_target_obj(event), &area);
+  lv_layer_t *layer = lv_event_get_layer(event);
+  lv_draw_rect_dsc_t bar; lv_draw_rect_dsc_init(&bar);
+  bar.bg_opa = LV_OPA_COVER; bar.radius = 4;
+  // A small playback indicator, not a sampled spectrum. Only this 136x64
+  // region is invalidated; there are no decoded animation frames or layers.
+  static const uint8_t heights[] = {10,18,32,48,38,24,14,8};
+  unsigned tick = lv_tick_elaps(X.expression_at) / 160;
+  for (unsigned i = 0; i < 7; i++) {
+    unsigned h = X.view.output_active ? heights[(tick + i * 3) % 8] : 6;
+    bar.bg_color = lv_color_hex(X.view.output_active ? XZ_UI_ACCENT : XZ_UI_LINE);
+    int x = area.x1 + 16 + (int)i * 16, y = area.y1 + (64 - (int)h) / 2;
+    lv_area_t a = {x,y,x+7,y+(int)h-1}; lv_draw_rect(layer,&bar,&a);
+  }
+}
 static void motion(lv_timer_t *timer) {
+  if (X.root && X.radio_meter) {
+    if (X.view.output_active) lv_obj_invalidate(X.radio_meter);
+    if (timer) {
+      lv_timer_set_period(timer,160);
+      if (X.view.output_active) lv_timer_resume(timer); else lv_timer_pause(timer);
+    }
+    return;
+  }
   if (X.root && X.portrait && X.view.avatar==XZ_OFFICIAL_AVATAR) {
     unsigned delay=ui_official_expression(X.portrait,&X.view,lv_tick_elaps(X.expression_at));
     if(timer){if(delay){lv_timer_set_period(timer,delay);lv_timer_resume(timer);}else lv_timer_pause(timer);}
@@ -234,11 +259,13 @@ static void render(void) {
   if (X.motion) lv_timer_pause(X.motion);
   X.welcome_drawn = false;
   lv_obj_clean(X.root);
-  X.portrait = X.message = X.badge = X.volume_value = X.volume_bar = NULL;
+  X.portrait = X.message = X.badge = X.volume_value = X.volume_bar = X.radio_meter = NULL;
   memset(X.choice, 0, sizeof X.choice); memset(X.caption, 0, sizeof X.caption);
   memset(X.icon, 0, sizeof X.icon);
   if (X.page == CHAT && X.view.phase == XZ_SETUP) {
     text("配置网络", 16, 14, 180, &ui_font_title, XZ_UI_INK);
+  } else if (X.page == CHAT && X.view.phase == XZ_RADIO) {
+    text("网络电台", 16, 14, 180, &ui_font_title, XZ_UI_INK);
   } else if (X.page == CHAT) {
     text("FoloToy", 16, 16, 72, &lv_font_montserrat_14, XZ_UI_ACCENT);
     text("小智", 93, 12, 70, &ui_font_title, XZ_UI_INK);
@@ -248,6 +275,24 @@ static void render(void) {
        "智能体设置", 16, 14, 180, &ui_font_title, XZ_UI_INK);
   ui_theme_battery_create(&X.battery, X.root);
   ui_theme_battery_set(&X.battery, battery_percent, battery_level);
+  if (X.page == CHAT && X.view.phase == XZ_RADIO) {
+    X.radio_started = X.view.output_active;
+    X.badge = text(X.radio_started ? "正在播放" : "正在连接电台", 14,54,212,&ui_font_body,XZ_UI_ACCENT);
+    center(X.badge);
+    X.message = text(X.view.detail,16,91,208,&ui_font_title,XZ_UI_INK);
+    center(X.message);lv_obj_set_height(X.message,48);
+    lv_label_set_long_mode(X.message,LV_LABEL_LONG_DOT);
+    X.radio_meter=lv_obj_create(X.root);lv_obj_remove_style_all(X.radio_meter);
+    lv_obj_set_pos(X.radio_meter,52,150);lv_obj_set_size(X.radio_meter,136,64);
+    lv_obj_remove_flag(X.radio_meter,LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(X.radio_meter,radio_draw,LV_EVENT_DRAW_MAIN,NULL);
+    center(text("听见此刻",16,225,208,&ui_font_body,XZ_UI_MUTED));
+    center(text("上键 · 换台",16,250,208,&ui_font_body,XZ_UI_MUTED));
+    lv_obj_t *back=panel(X.root,54,276,132,30,false);
+    center(ui_theme_text(back,"下键 · 返回",2,4,128,&ui_font_title,XZ_UI_INK));
+    motion(X.motion);
+    return;
+  }
   if (X.page == MENU) {
     static const char *const items[MENU_COUNT] = {
         "重新配网", "调整音量", "打断方式", "智能体设置", "屏幕亮度", "休眠时间", "返回"};
@@ -332,19 +377,21 @@ static void render(void) {
                          X.view.phase == XZ_WIFI || X.view.phase == XZ_CLOUD ||
                          X.view.phase == XZ_ERROR || X.view.phase == XZ_OFF)) {
     if (X.view.phase == XZ_SETUP) {
-      panel(X.root, 14, 94, 212, 78, false);
-      panel(X.root, 14, 184, 212, 77, false);
+      panel(X.root, 12, 50, 216, 88, false);
+      panel(X.root, 12, 148, 216, 88, false);
       if (*X.view.detail) {
-        X.message=text(X.view.detail,16,71,208,&ui_font_title,XZ_UI_ACCENT);
+        X.message=text(X.view.detail,16,245,208,&ui_font_title,XZ_UI_ACCENT);
         lv_obj_set_height(X.message,22);
         lv_label_set_long_mode(X.message,LV_LABEL_LONG_DOT);
       }
-      text("01", 25, 106, 24, &lv_font_montserrat_14, XZ_UI_ACCENT);
-      text("手机连接下方热点",55,105,160,&ui_font_body,XZ_UI_INK);
-      text(X.view.hotspot,25,137,190,&ui_font_body,XZ_UI_ACCENT);
-      text("02", 25, 196, 24, &lv_font_montserrat_14, XZ_UI_ACCENT);
-      text("打开 192.168.4.1",55,195,160,&ui_font_body,XZ_UI_INK);
-      text("填写 2.4G Wi-Fi",55,227,160,&ui_font_body,XZ_UI_MUTED);
+      text("1",24,63,22,&lv_font_montserrat_14,XZ_UI_ACCENT);
+      text("手机连接热点",46,60,174,&ui_font_title,XZ_UI_INK);
+      lv_obj_t *ssid=text(X.view.hotspot,24,100,192,&ui_font_title,XZ_UI_ACCENT);
+      lv_obj_set_height(ssid,24);lv_label_set_long_mode(ssid,LV_LABEL_LONG_SCROLL_CIRCULAR);
+      text("2",24,161,22,&lv_font_montserrat_14,XZ_UI_ACCENT);
+      text("浏览器打开",46,158,174,&ui_font_title,XZ_UI_INK);
+      text("192.168.4.1",24,193,192,&lv_font_montserrat_24,XZ_UI_ACCENT);
+      if (!*X.view.detail) center(text("选择或添加 2.4G Wi-Fi",12,245,216,&ui_font_body,XZ_UI_MUTED));
     } else if (X.view.phase == XZ_BIND) {
       text("联网成功", 16, 65, 208, &ui_font_title, XZ_UI_ACCENT);
       text("请前往 xiaozhi.me", 16, 101, 208, &ui_font_title, XZ_UI_ACCENT);
@@ -433,6 +480,7 @@ void ui_xiaozhi_update(const xz_view_t *v, const companion_portrait_t *art) {
   X.official_dark=xz_theme_dark();X.installed=xz_theme_installed();
   bool emotion_changed=official && v->emotion!=X.view.emotion;
   bool art_changed = art != X.art || v->avatar != X.view.avatar;
+  bool radio_changed = (v->phase==XZ_RADIO)!=(X.view.phase==XZ_RADIO);
   bool controls_changed = chat_control_count(v->phase) != chat_control_count(X.view.phase);
   bool detail_changed = strcmp(X.view.detail, v->detail) != 0;
   bool changed = show_fault || phase_changed || v->revision != X.view.revision || art_changed;
@@ -443,6 +491,20 @@ void ui_xiaozhi_update(const xz_view_t *v, const companion_portrait_t *art) {
   }
   X.view = *v;
   X.art = art;
+  if (X.page==CHAT && radio_changed) { X.selection=0; render(); return; }
+  if (X.page==CHAT && v->phase==XZ_RADIO && X.radio_meter) {
+    if (detail_changed) {
+      lv_label_set_text(X.message,v->detail);
+      X.expression_at=lv_tick_get();
+      X.radio_started=v->output_active;
+    }
+    if (audio_changed || detail_changed) {
+      X.radio_started=X.radio_started || v->output_active;
+      lv_label_set_text(X.badge,X.radio_started ? "正在播放" : "正在连接电台");
+      lv_obj_invalidate(X.radio_meter);motion(X.motion);lv_timer_reset(X.motion);
+    }
+    return;
+  }
   if (rebuild_official && (X.page==CHAT || X.page==APPEARANCE)) { render();return; }
   if (emotion_changed && X.portrait) { X.expression_at=lv_tick_get();motion(X.motion); }
   if (audio_changed && X.portrait && X.page == CHAT && !phase_changed && !art_changed) {
@@ -567,6 +629,11 @@ ui_xz_action_t ui_xiaozhi_key(ui_play_key_t key, unsigned *avatar) {
       X.selection = MENU_AGENT;
       render();
     }
+    return UI_XZ_NONE;
+  }
+  if (X.page == CHAT && X.view.phase == XZ_RADIO) {
+    if (key == UI_PLAY_UP) return UI_XZ_RADIO_NEXT;
+    if (key == UI_PLAY_DOWN || key == UI_PLAY_OK) return UI_XZ_TALK;
     return UI_XZ_NONE;
   }
   unsigned count = X.page == MENU ? MENU_COUNT : chat_control_count(X.view.phase);

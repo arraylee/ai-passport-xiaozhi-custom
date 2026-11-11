@@ -40,6 +40,8 @@ static void *xTaskGetCurrentTaskHandle(void){return current_task;}
 #define calloc system_calloc
 #define realloc system_realloc
 #define free system_free
+#define __real_esp_mbedtls_mem_calloc system_calloc
+#define __real_esp_mbedtls_mem_free system_free
 '''
 CASES=r'''
 int main(void){
@@ -112,6 +114,100 @@ void media_lib_free(void *p){free(p);}
 
 
 class CodecArenaTest(unittest.TestCase):
+ def test_radio_worker_borrows_decoder_storage_without_tls_ownership(self):
+  self._run_case(r'''
+int main(void){
+ assert(!xz_codec_memory_radio_enter());
+ for(unsigned pass=0;pass<100;pass++){
+  current_task=(void*)1;assert(xz_codec_memory_begin());
+  assert(xz_codec_memory_network_only());assert(xz_codec_memory_loan_begin());
+  void *rx=__wrap_esp_mbedtls_mem_calloc(1,17058),*tx=__wrap_esp_mbedtls_mem_calloc(1,1024);
+  assert(rx&&tx&&arena_contains(rx)&&arena_contains(tx));
+  current_task=(void*)2;assert(xz_codec_memory_radio_enter());
+  assert(!xz_codec_memory_radio_enter()&&!xz_codec_memory_loan_begin()&&!xz_codec_memory_loan_end());
+  void *foreign_tls=__wrap_esp_mbedtls_mem_calloc(1,2048);
+  assert(foreign_tls&&!arena_contains(foreign_tls));__wrap_esp_mbedtls_mem_free(foreign_tls);
+  unsigned sizes[]={68,1968,4224,2304,2312,4224,2304,2312,8192};
+  void *mp3[9];unsigned shared=0;
+  for(unsigned i=0;i<9;i++){mp3[i]=media_lib_module_calloc("AUD_Codec",1,sizes[i]);assert(mp3[i]);if(arena_contains(mp3[i]))shared+=sizes[i];}
+  assert(shared>=6000&&mp3[8]==radio_work);
+  current_task=(void*)3;assert(!xz_codec_memory_radio_enter());xz_codec_memory_radio_leave();
+  assert(radio_owner==(void*)2);
+  current_task=(void*)1;__wrap_esp_mbedtls_mem_free(rx);__wrap_esp_mbedtls_mem_free(tx);
+  assert(xz_codec_memory_loan_end()); // Decoder can finish its buffered tail after HTTP cleanup.
+  current_task=(void*)2;for(unsigned i=0;i<9;i++)media_lib_free(mp3[i]);
+  xz_codec_memory_radio_leave();assert(!radio_owner);
+  current_task=(void*)1;assert(xz_codec_memory_end());
+ }
+ assert(heap_allocs==heap_frees);
+ puts("100 asynchronous radio workers: shared decoder tail, isolated TLS ownership, joined cleanup PASS");
+}
+''')
+ def test_radio_keeps_tls_reserve_while_mp3_uses_separate_heap(self):
+  self._run_case(r'''
+int main(void){
+ for(unsigned pass=0;pass<100;pass++){
+  assert(xz_codec_memory_begin());
+  void *voice=media_lib_module_malloc("AUD_Codec",24524);assert(voice);
+  assert(!xz_codec_memory_network_only());media_lib_free(voice);
+  current_task=(void*)2;assert(!xz_codec_memory_network_only());current_task=(void*)1;
+  assert(xz_codec_memory_network_only());
+  assert(xz_codec_memory_loan_begin());
+  void *rx=__wrap_esp_mbedtls_mem_calloc(1,17058),*tx=__wrap_esp_mbedtls_mem_calloc(1,1024);
+  assert(rx&&tx&&arena_contains(rx)&&arena_contains(tx));
+  unsigned sizes[]={68,1968,4224,2304,2312,4224,2304,2312,8192};
+  void *mp3[9];
+  unsigned shared=0;
+  for(unsigned i=0;i<9;i++){mp3[i]=media_lib_module_calloc("AUD_Codec",1,sizes[i]);assert(mp3[i]);if(arena_contains(mp3[i]))shared+=sizes[i];}
+  assert(shared>=6000);
+  assert(mp3[8]==radio_work&&radio_work_live);
+  assert(media_lib_module_realloc("AUD_Codec",mp3[8],8192)==mp3[8]);
+  assert(!xz_codec_memory_network_only());
+  assert(!xz_codec_memory_loan_end());
+  __wrap_esp_mbedtls_mem_free(rx);__wrap_esp_mbedtls_mem_free(tx);assert(xz_codec_memory_loan_end());
+  assert(!xz_codec_memory_loan_begin()); // Decoder still occupies the shared tail.
+  for(unsigned i=0;i<9;i++)media_lib_free(mp3[i]);
+  assert(xz_codec_memory_end());
+ }
+ assert(heap_allocs==heap_frees);
+ puts("100 radio handovers keep exact TLS buffers contiguous while MP3 uses independently freed heap PASS");
+}
+''')
+ def test_https_borrows_reserved_storage_without_exposing_it_to_heap_fragmentation(self):
+  self._run_case(r'''
+int main(void){
+ assert(!xz_codec_memory_loan_begin());
+ for(unsigned pass=0;pass<100;pass++){
+  reserve_offset=(pass%4)*4;reserve_fail=false;assert(xz_codec_memory_begin());
+  void *codec=media_lib_module_malloc("AUD_Codec",24524);assert(codec);
+  assert(!xz_codec_memory_loan_begin());media_lib_free(codec);
+  fragmented=reserve_fail=true; // Re-reserving the arena after HTTPS would fail.
+  assert(xz_codec_memory_loan_begin());assert(!xz_codec_memory_loan_begin());
+  void *record=__wrap_esp_mbedtls_mem_calloc(1,16717);
+  void *handshake=__wrap_esp_mbedtls_mem_calloc(1,4096);
+  assert(record&&handshake&&arena_contains(record)&&arena_contains(handshake));
+  for(unsigned i=0;i<16717;i++)assert(!((unsigned char *)record)[i]);
+  assert(!xz_codec_memory_loan_end());
+  // Concurrent MQTT uses ordinary heap, including frees on the HTTP task.
+  current_task=(void*)2;void *mqtt=__wrap_esp_mbedtls_mem_calloc(1,2048);
+  assert(mqtt&&!arena_contains(mqtt));assert(!xz_codec_memory_loan_begin());
+  current_task=(void*)1;__wrap_esp_mbedtls_mem_free(mqtt);
+  // A second TLS buffer may spill into ordinary heap without poisoning stats.
+  void *spill=__wrap_esp_mbedtls_mem_calloc(1,8192);assert(spill&&!arena_contains(spill));
+  __wrap_esp_mbedtls_mem_free(handshake);__wrap_esp_mbedtls_mem_free(record);
+  __wrap_esp_mbedtls_mem_free(spill);assert(xz_codec_memory_loan_end());
+  assert(!xz_codec_memory_loan_end());
+  xz_codec_memory_stats_t s;xz_codec_memory_snapshot(&s);assert(!s.used&&!s.failures);
+  // Both real codec state sizes still fit after repeated TLS allocation churn.
+  codec=media_lib_module_malloc("AUD_Codec",24524);assert(codec);media_lib_free(codec);
+  codec=media_lib_module_malloc("AUD_Codec",17784);assert(codec);media_lib_free(codec);
+  assert(xz_codec_memory_end());
+ }
+ assert(!__wrap_esp_mbedtls_mem_calloc(SIZE_MAX,2));
+ assert(heap_allocs==heap_frees);
+ puts("100 HTTPS/Opus handovers with unavailable re-reservation, concurrent MQTT and exact TLS record buffers PASS");
+}
+''')
  def test_retry_24k_region_tracks_small_wrapper_failures_and_reclaims_sdk_leaks(self):
   cases=r'''
 int main(void){
@@ -221,7 +317,7 @@ class CodecArenaLifecycleTest(unittest.TestCase):
 static xz_view_t working;
 static atomic_bool cancel;
 static bool setup_requested;
-enum {XZ_OFFICIAL_AVATAR=2,SESSION_THEME_FAILED=9};
+enum {XZ_OFFICIAL_AVATAR=2,SESSION_THEME_FAILED=9,SESSION_RADIO=10};
 static int outcome;
 static bool xz_theme_pending_boot(void){return false;}
 static bool xz_theme_download(const atomic_bool *c){(void)c;assert(0);return false;}

@@ -127,3 +127,9 @@ CONFIG_LWIP_SO_RCVBUF=y
 # The server DER chain stays in the TLS input buffer during verification.
 CONFIG_MBEDTLS_SSL_KEEP_PEER_CERTIFICATE=n
 
+# Let continuous radio recover loss without repeatedly exhausting a tiny TCP
+# window. The player keeps an 8 KiB stack FIFO and does not reserve another
+# heap FIFO, leaving these packet buffers and TLS/MP3 room to coexist.
+CONFIG_LWIP_TCP_WND_DEFAULT=11520
+CONFIG_LWIP_TCP_RECVMBOX_SIZE=10
+CONFIG_LWIP_TCP_SACK_OUT=y

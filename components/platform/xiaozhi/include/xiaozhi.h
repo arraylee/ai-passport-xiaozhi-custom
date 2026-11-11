@@ -17,7 +17,8 @@ typedef enum {
   XZ_WAKING,
   XZ_FAREWELL,
   XZ_BOOT,
-  XZ_WELCOME
+  XZ_WELCOME,
+  XZ_RADIO
 } xz_phase_t;
 // Preserved when phase becomes ERROR, so a cloud/voice failure cannot be
 // presented as lost Wi-Fi credentials. WIFI is the zero-initialized stage.
@@ -56,10 +57,16 @@ void xiaozhi_stop(void); /* nonblocking cancellation, safe under LVGL lock */
 bool xiaozhi_stopped(
     void); /* true only after all network/audio resources released */
 void xiaozhi_talk(void); /* End audio and park on the online portrait. */
+void xiaozhi_radio_step(int direction);
 void xiaozhi_welcome_shown(void);
 void xiaozhi_begin_setup(void);
 bool xiaozhi_output_active(void);
 void xiaozhi_resume(void); /* Start a new conversation from online standby. */
+#ifdef PASSPORT_TEST_SERVICES
+// Bench-only: fixed synthetic requests; absent from production firmware.
+bool xiaozhi_test_service(unsigned kind);
+bool xiaozhi_test_take_network_only(void);
+#endif
 void xiaozhi_interrupt(void); /* stop the reply and keep this conversation open */
 bool xiaozhi_set_natural_interrupt(bool enabled);
 bool xiaozhi_set_volume(unsigned volume);

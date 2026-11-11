@@ -8,6 +8,7 @@ typedef struct {
   bool (*set_dark)(bool);
   const char *version;
   unsigned assets_address, assets_size;
+  bool (*online)(const char *name, const cJSON *args, char *reply, size_t capacity);
 } xz_mcp_device_t;
 /* Returns an owned, serialized MQTT reply; notifications do not have a reply. */
 char *xz_mcp_reply(const cJSON *request, const char *session, const xz_config_t *settings,

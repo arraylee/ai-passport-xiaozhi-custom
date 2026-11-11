@@ -10,7 +10,7 @@
 #define TEXT_ARG(key)                                                                              \
   "{\"type\":\"object\",\"properties\":{\"" key "\":{\"type\":\"string\"}},\"required\":[\"" key   \
   "\"]}"
-enum { STATUS, VOLUME, BRIGHTNESS, PALETTE, INFO, SCREEN, ASSETS, REBOOT };
+enum { STATUS, VOLUME, BRIGHTNESS, PALETTE, INFO, SCREEN, ASSETS, REBOOT, WEATHER, STATIONS, RADIO };
 static const struct {
   const char *name, *description, *schema;
   bool user;
@@ -30,7 +30,13 @@ static const struct {
     {"self.screen.get_info", "Read the LCD size and color mode.", EMPTY, true},
     {"self.assets.set_download_url",
      "Set the URL of an official assets.bin to install on next boot.", TEXT_ARG("url"), true},
-    {"self.reboot", "Restart the device to apply pending assets.", EMPTY, true}};
+    {"self.reboot", "Restart the device to apply pending assets.", EMPTY, true},
+    {"self.weather.get_forecast", "Local weather today and tomorrow. Without a city use the saved city or ask the user. remember=true only for an explicit change of home city.",
+     "{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"},\"region\":{\"type\":\"string\"},\"remember\":{\"type\":\"boolean\"}}}", false},
+    {"self.radio.list_stations","List playable stations, optionally in a city. For 北京电台 or 深圳电台 ask which returned station to play. For more use next_page=true.",
+     "{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"},\"next_page\":{\"type\":\"boolean\"}}}",false},
+    {"self.radio.play_station","Play a requested named station e.g. 深圳音乐广播, or a number (1-3) on the last spoken page. Pass the city if known. Read choices if ambiguous.",
+     "{\"type\":\"object\",\"properties\":{\"station\":{\"type\":\"string\"},\"city\":{\"type\":\"string\"},\"number\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":3}}}",false}};
 #define TOOL_COUNT (sizeof tools / sizeof tools[0])
 static const char *str(const cJSON *o, const char *key) {
   const cJSON *v = cJSON_GetObjectItemCaseSensitive(o, key);
@@ -92,7 +98,7 @@ fail:
 static cJSON *invoke(unsigned i, const cJSON *arg, const xz_config_t *s, const xz_mcp_device_t *d) {
   unsigned value = 0;
   bool ok = false;
-  char info[384];
+  char info[640] = {0};
   switch (i) {
   case STATUS:
     if (!s->get_volume || !s->get_brightness)
@@ -129,6 +135,12 @@ static cJSON *invoke(unsigned i, const cJSON *arg, const xz_config_t *s, const x
     ok = url && d->queue_url && d->queue_url(url);
     break;
   }
+  case WEATHER:
+  case STATIONS:
+  case RADIO:
+    if (!d->online) return call_result("请在开始对话后重试。", true);
+    ok = d->online(tools[i].name, arg, info, sizeof info);
+    return call_result(info, !ok);
   case REBOOT:
     ok = d->queue_reboot && d->queue_reboot();
     break;

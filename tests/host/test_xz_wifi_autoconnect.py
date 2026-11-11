@@ -185,6 +185,23 @@ int main(void){
  puts("Recovery read-only Wi-Fi import: open/protected networks, failed reads, existing preferences and no unsolicited writes passed");
 }
 ''',FAKES+recovery)
+ def test_manual_hidden_name_is_used_exactly_after_restart(self):
+  run_case(r'''
+int main(void){
+ (void)wifi_failure;
+ const char name[]=" Office-隐-Private-SSID-123456 ";
+ _Static_assert(sizeof name-1==32,"32-byte SSID fixture");
+ xz_wifi_profiles_t profiles={0};wifi_config_t profile={0},used={0};
+ memcpy(profile.sta.ssid,name,32);memcpy(profile.sta.password,"sample-pass",11);
+ assert(save_wifi_profile(&profiles,&profile));
+ memset(&profiles,0,sizeof profiles); load_wifi_profiles(&profiles);
+ reset(0);scan_fail=true;
+ assert(auto_wifi(&profiles,&stop,status,&used)&&!scans&&attempts==1);
+ assert(!memcmp(active.sta.ssid,name,32)&&!memcmp(used.sta.ssid,name,32));
+ assert(!strcmp((char*)active.sta.password,"sample-pass"));
+ puts("Saved hidden 32-byte mixed-case UTF-8 SSID reused byte-for-byte on cold reconnect PASS");
+}
+''')
  def test_same_saved_network_with_slow_dhcp_is_not_abandoned(self):
   run_case(r'''
 int main(void){

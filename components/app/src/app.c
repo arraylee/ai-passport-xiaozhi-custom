@@ -2564,13 +2564,17 @@ static int on_at_command(const char *line, int len, char *out, int n, void *user
         if (at_is(a, "binding,reset")) return at_binding_reset(out, n);
         if (at_is(a, "test,home")) return at_test_entry(false, out, n);
         if (at_is(a, "voice,check")) return at_test_entry(true, out, n);
+#ifdef PASSPORT_TEST_SERVICES
+        if (at_is(a,"voice,test-weather") || at_is(a,"voice,test-radio") || at_is(a,"voice,test-radio-network"))
+            return at_reply(out,n,xiaozhi_test_service(at_is(a,"voice,test-weather")?1:at_is(a,"voice,test-radio-network")?3:2)?"+OK service_test_queued\r\n":"+ERR=busy\r\n");
+#endif
         if (at_is(a, "voice,end") || at_is(a, "voice,resume")) {
             xz_view_t view; xiaozhi_snapshot(&view);
             if (xiaozhi_stopped()) return at_reply(out, n, "+ERR=busy\r\n");
             if (at_is(a, "voice,resume") && view.phase == XZ_STANDBY) {
                 xiaozhi_resume(); return at_reply(out, n, "+OK voice_resuming\r\n");
             }
-            if (at_is(a, "voice,end") && (view.phase == XZ_LISTEN || view.phase == XZ_SPEAK || view.phase == XZ_THINK || view.phase == XZ_READY)) {
+            if (at_is(a, "voice,end") && (view.phase == XZ_RADIO || view.phase == XZ_LISTEN || view.phase == XZ_SPEAK || view.phase == XZ_THINK || view.phase == XZ_READY)) {
                 xiaozhi_talk(); return at_reply(out, n, "+OK voice_ending\r\n");
             }
             return at_reply(out, n, "+ERR=busy\r\n");

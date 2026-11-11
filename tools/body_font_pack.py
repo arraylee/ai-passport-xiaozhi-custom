@@ -64,7 +64,7 @@ def validate(blob):
     return h
 
 
-def build(source, out):
+def build(source, out, offset=OFFSET):
     arrays = array_data(source)
     bitmap_name = 'passport_body_glyph_bitmap'
     metrics_name = 'passport_body_glyph_dsc'
@@ -129,19 +129,19 @@ static const void *passport_body_bitmap(lv_font_glyph_dsc_t *g, lv_draw_buf_t *b
     source += '}\n'
     (out / 'body_font.bin').write_bytes(blob)
     (out / 'body_font_meta.h').write_text(
-        '#pragma once\n' + f'#define BODY_FONT_OFFSET {OFFSET}u\n#define BODY_FONT_SIZE {len(blob)}u\n'
+        '#pragma once\n' + f'#define BODY_FONT_OFFSET {offset}u\n#define BODY_FONT_SIZE {len(blob)}u\n'
         + f'#define BODY_FONT_CRC 0x{zlib.crc32(blob[16:]):08x}u\n'
         + '#define BODY_FONT_HEADER_BYTES {' + ','.join(map(str, blob[:HEADER])) + '}\n'
         + f'#define BODY_FONT_FINGERPRINT "{fingerprint(blob)}"\n')
     return bytes(blob), source
 
 
-def bundle(sprites, catalog, font):
+def bundle(sprites, catalog, font, offset=OFFSET):
     validate(font)
-    if len(sprites) > OFFSET:
+    if len(sprites) > offset:
         raise ValueError('sprites overlap the fixed body font area')
-    combined = sprites + b'\xff' * (OFFSET - len(sprites)) + font
-    catalog = dict(catalog, body_font={'offset_in_partition': OFFSET, 'bytes': len(font),
+    combined = sprites + b'\xff' * (offset - len(sprites)) + font
+    catalog = dict(catalog, body_font={'offset_in_partition': offset, 'bytes': len(font),
                                      'sha256': hashlib.sha256(font).hexdigest(), 'format': 'BDF1'})
     return combined, catalog
 
@@ -151,12 +151,15 @@ def split(data, catalog):
     meta = catalog.get('body_font')
     if meta is None:
         return data, None
+    offset = meta.get('offset_in_partition')
+    if offset not in (0x4000, OFFSET):
+        raise ValueError('unknown body font offset')
     length = catalog.get('bytes', 0)
-    if not 64 <= length <= OFFSET or any(x != 255 for x in data[length:OFFSET]):
+    if not 64 <= length <= offset or any(x != 255 for x in data[length:offset]):
         raise ValueError('body font bundle padding')
-    font = data[OFFSET:]
+    font = data[offset:]
     validate(font)
-    expected = {'offset_in_partition': OFFSET, 'bytes': len(font),
+    expected = {'offset_in_partition': offset, 'bytes': len(font),
                 'sha256': hashlib.sha256(font).hexdigest(), 'format': 'BDF1'}
     if meta != expected:
         raise ValueError('body font catalog mismatch')

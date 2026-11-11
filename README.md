@@ -2,7 +2,27 @@
 
 适用于 AI PASSPORT ESP32-C3 / 8 MB 板卡的独立固件，沿用已经验证的默认固件硬件支持与小智交互升级。
 
-当前版本 **2.1.0-xiaozhi.19**，小智控制台上报版本 **2.1.0.19**，使用 **ESP-IDF v5.5.3** 构建。
+当前版本 **2.1.0-xiaozhi.22**，小智控制台上报版本 **2.1.0.22**，使用 **ESP-IDF v5.5.3** 构建。
+
+## .22 电台缓冲与返回操作
+
+- 电台接收和播放分别处理，先蓄足缓冲再起播，断流后最多自动重连两次；下键可随时取消重连并返回。
+- 调整 Wi-Fi 聚合接收、TCP 窗口及丢包恢复；压缩音频使用工作栈内的 8 KiB 队列，给网络接收留出内存。实机五分钟连续播放记录为零次缓冲耗尽，随后天气查询成功。
+- 音频连续拼成与声卡一致的完整分块，消除 MP3 帧尾不足一块的写入；起播和重新缓冲后的声音渐入。保留音量设置与原有音量曲线。
+- 电台页改为**上键换台、下键返回**，底部显示「下键 · 返回」。返回后停止电台，保留 Wi-Fi，按「对话」可以续聊。
+- 参考 [Passport OS 电台实现](https://github.com/manchunx7-bit/passport-os/blob/b70879b3c4be0751cb728b8b0c421dd2d1524fdb/main/apps/radio/radio_player.cc) 的资源交接、预缓冲和重连策略。内置公开广播使用音源方的 HTTP 直播入口，目录提供的 HTTPS 地址照常使用 HTTPS；动态 Wi-Fi 接收上限增加以容纳突发数据。
+
+## .21 界面与联网播放修订
+
+- 卡上的配网指引上移，放大热点名和浏览器地址，保留两步配置与手动添加隐藏网络的入口。
+- 天气和电台查询保留语音所需的连续内存，临时联网缓冲在查询结束后归还；工具调用文字改为“正在查询天气”或“正在查找电台”。
+- 电台有独立的收听页面，显示台名、播放状态和随声音活动的轻量声条。直播使用固定网络缓冲，提前保留解码所需的大块内存，待连接建立后再启动解码；复用缓冲里的空闲空间，为无线接收留出余量。
+
+## .20 配网、天气和电台
+
+- 首次开机按「配置网络」，或在菜单选「重新配网」。用手机连接卡上显示的热点，打开 `192.168.4.1`。可从「附近网络」选取 2.4 GHz Wi-Fi，也可在「手动添加网络」输入隐藏网络的完整名称和密码。开放网络勾选「无需密码」。提示连接并保存后回到卡上，按屏幕指引完成绑定。
+- 说「今天天气怎么样」。第一次未提供城市时，小智会询问并记住城市；也可直接问「深圳明天会下雨吗」。临时查其他城市会保留原常用城市，说「把常用城市改成杭州」可更换。天气数据及城市搜索来自 [Open-Meteo](https://open-meteo.com/)。
+- 说「支持哪些电台」或「深圳电台」听选台列表，说「第二个」「还有哪些」继续选台，也可直接说「播放深圳音乐广播」。北京、深圳等有内置台；其他城市会查询 [Radio Browser](https://www.radio-browser.info/) 的 MP3 直播目录。播放时上键换台、下键返回，回到在线待机后按「对话」续聊。
 
 ## .19 安装与启动
 
@@ -11,7 +31,7 @@
 用于 [FoloToy 小程序玩法安装器](https://github.com/FoloToy/ai-passport-miniapp-installer/blob/main/README.zh_CN.md)的文件是以 `-miniapp.bin` 结尾的合并固件，**5,687,560 字节（5.69 MB）**。保留小智对话、语音调节、官方主题、多语言字库、开机音乐和两个动态形象。人物帧无损压缩，显示时按四行解开；官方主题包空间仍为 920 KiB。为给常驻安装器留空间，自传相册/头像的 JPEG 上限改为每张 28 KiB，自传音频分区为 80 KiB。这些限制不作用于小智对话语音。
 
 1. 通过微信小程序安装时，卡上需已有**协议 4** 的小程序玩法安装器。首次安装或从旧协议升级，请先按[官方说明](https://github.com/FoloToy/ai-passport-miniapp-installer/blob/main/docs/development/engineering/ble-recovery-compatibility.zh_CN.md)通过 USB 刷入安装器的**首刷整包**。此操作会清除原玩法和配置。小智的 BIN 不含常驻安装器。
-2. 在安装模式下，从 AI Passport 微信小程序的「设备」页连接卡，首次配置 2.4 GHz Wi-Fi。待玩法 72 上架此版本后，在社区打开「小智 AI 对话机器人」，确认显示 **.19**，点「安装到设备」，保持供电和联网直到重启。以后关机后同时按开机键和上键，可重新进入安装模式。
+2. 在安装模式下，从 AI Passport 微信小程序的「设备」页连接卡，首次配置 2.4 GHz Wi-Fi。待玩法 72 上架此版本后，在社区打开「小智 AI 对话机器人」，确认显示 **.22**，点「安装到设备」，保持供电和联网直到重启。以后关机后同时按开机键和上键，可重新进入安装模式。
 3. 小智会优先尝试已有的可用网络，也可在菜单「重新配网」。通过小程序换装会重置小智本地设置；若屏幕显示激活码，请按提示绑定，音量、形象或自定义主题需要重新选择。此包不用于旧版 USB 保留配置升级。
 
 ## 使用体验
@@ -86,7 +106,7 @@ python tools/verify_release.py releases/<生成的ZIP> --build-dir build
 
 ```sh
 idf.py -B build-miniapp -DSDKCONFIG="$PWD/build-miniapp/sdkconfig" -DPASSPORT_MINIAPP=ON build
-python tools/pack_miniapp.py --build-dir build-miniapp --output releases/AI-PASSPORT-Xiaozhi-2.1.0-xiaozhi.19-miniapp.bin
+python tools/pack_miniapp.py --build-dir build-miniapp --output releases/AI-PASSPORT-Xiaozhi-2.1.0-xiaozhi.22-miniapp.bin
 ```
 
 安装兼容测试使用上游协议 4 的真实分区与流式写入代码，见 `tests/miniapp_recovery/run.py --help`。测试替代的是无线、Flash 和硬件验镜像接口，不是微信客户端或卡上的实测。小程序版本使用的启动钩子来自 [FoloToy 安装器 127c56b](https://github.com/FoloToy/ai-passport-miniapp-installer/tree/127c56bc97b7ea85bf4bfd2b52ce4e2d80a30566/bootloader_components/recovery_boot_hook)，原 MIT 许可随源码保留。

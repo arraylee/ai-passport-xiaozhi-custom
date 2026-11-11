@@ -18,6 +18,18 @@ bool xz_codec_memory_begin(void);
 bool xz_codec_memory_end(void);
 void xz_codec_memory_snapshot(xz_codec_memory_stats_t *out);
 
+// An idle owner may lend this reserved region to one synchronous HTTPS request.
+// The reservation stays intact; other tasks and persistent JSON allocations
+// cannot split the block that the next Opus encoder needs. End only after the
+// HTTP client has been cleaned up. Without an active arena begin returns false.
+bool xz_codec_memory_loan_begin(void);
+bool xz_codec_memory_loan_end(void);
+// After voice codecs close, reserve this region for radio TLS while its MP3
+// decoder uses ordinary heap. Reset by end(); only the owning worker may switch.
+bool xz_codec_memory_network_only(void);
+bool xz_codec_memory_radio_enter(void);
+void xz_codec_memory_radio_leave(void);
+
 // Strong definitions of the pinned esp_audio_codec 2.5 weak allocation ABI.
 void *media_lib_module_malloc(const char *module, size_t size);
 void *media_lib_module_calloc(const char *module, size_t count, size_t size);

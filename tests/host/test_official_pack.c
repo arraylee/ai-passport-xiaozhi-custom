@@ -82,7 +82,7 @@ static void controls(void) {
     bool user = i % 2;
     m = rpc("tools/list", user ? "{\"withUserTools\":true}" : "{}");
     cJSON *tools = cJSON_GetObjectItem(cJSON_GetObjectItem(m, "result"), "tools");
-    assert(cJSON_GetArraySize(tools) == (user ? 8 : 4));
+    assert(cJSON_GetArraySize(tools) == (user ? 11 : 7));
     bool saw = false;
     for (int j = 0; j < cJSON_GetArraySize(tools); j++) {
       cJSON *t = cJSON_GetArrayItem(tools, j);

@@ -179,11 +179,14 @@ int main(void){
     v.phase=XZ_SETUP;strcpy(v.detail,"");strcpy(v.hotspot,"AI-PASSPORT-ABCD");
     strcpy(v.password,"12345678"); // A stale view must never reintroduce a password prompt.
     ui_xiaozhi_open(&v,NULL);settle();
-    lv_obj_t *prompt=label(lv_screen_active(),"手机连接下方热点");
+    lv_obj_t *prompt=label(lv_screen_active(),"手机连接热点");
     lv_obj_t *ssid=label(lv_screen_active(),v.hotspot);
-    lv_obj_t *address=label(lv_screen_active(),"打开 192.168.4.1");
-    lv_obj_t *wifi=label(lv_screen_active(),"填写 2.4G Wi-Fi");
+    lv_obj_t *address=label(lv_screen_active(),"192.168.4.1");
+    lv_obj_t *wifi=label(lv_screen_active(),"选择或添加 2.4G Wi-Fi");
     assert(prompt&&ssid&&address&&wifi&&!has_text(lv_screen_active(),"等待配网"));
+    assert(lv_obj_get_y(prompt)<70);
+    assert(lv_obj_get_style_text_font(ssid,0)==&ui_font_title);
+    assert(lv_obj_get_style_text_font(address,0)==&lv_font_montserrat_24);
     ui_xiaozhi_set_battery(87,5);settle();assert_gauge(87,5);
     assert(lv_obj_get_y(prompt)<lv_obj_get_y(ssid)&&lv_obj_get_y(ssid)<lv_obj_get_y(address)&&lv_obj_get_y(address)<lv_obj_get_y(wifi));
     assert(!has_text(lv_screen_active(),"密码 12345678"));
@@ -258,6 +261,26 @@ int main(void){
     ui_xiaozhi_open(&v,NULL);settle();
     assert(has_text(lv_screen_active(),"对话已结束")&&has_text(lv_screen_active(),v.detail));
     assert(ui_xiaozhi_key(UI_PLAY_OK,&avatar)==UI_XZ_RETRY);
+    v.phase=XZ_RADIO;v.revision++;strcpy(v.detail,"深圳飞扬971");ui_xiaozhi_update(&v,&face_art);settle();
+    assert(has_text(lv_screen_active(),"网络电台"));
+    assert(has_text(lv_screen_active(),"下键 · 返回"));
+    assert(has_text(lv_screen_active(),"上键 · 换台"));
+    assert(!find_face(lv_screen_active())); // No portrait/bitmap decoding during MP3 playback.
+    v.output_active=true;ui_xiaozhi_update(&v,&face_art);settle();
+    assert(has_text(lv_screen_active(),"正在播放"));
+    flushed_pixels=0;
+    for(unsigned i=0;i<20;i++)step(160);
+    assert(flushed_pixels<20*150*75); // Animate only the compact meter, never the whole LCD.
+    v.output_active=false;ui_xiaozhi_update(&v,&face_art);settle();
+    assert(has_text(lv_screen_active(),"正在播放")); // Silence does not imply a reconnect.
+    flushed_pixels=0;for(unsigned i=0;i<20;i++)step(160);assert(!flushed_pixels);
+    v.revision++;strcpy(v.detail,"北京音乐广播");ui_xiaozhi_update(&v,&face_art);settle();
+    assert(has_text(lv_screen_active(),"北京音乐广播"));bounds(lv_screen_active());
+    assert(ui_xiaozhi_key(UI_PLAY_UP,&avatar)==UI_XZ_RADIO_NEXT);
+    assert(ui_xiaozhi_key(UI_PLAY_DOWN,&avatar)==UI_XZ_TALK);
+    assert(ui_xiaozhi_key(UI_PLAY_OK,&avatar)==UI_XZ_TALK);
+    v.phase=XZ_STANDBY;v.revision++;ui_xiaozhi_update(&v,&face_art);settle();
+    assert(ui_xiaozhi_key(UI_PLAY_OK,&avatar)==UI_XZ_RESUME);
     ui_xiaozhi_close();v.phase=XZ_LISTEN;v.revision++;
     ui_xiaozhi_open(&v,&face_art);settle();
     ui_xiaozhi_key(UI_PLAY_UP,&avatar); // CHAT's menu control, index2.

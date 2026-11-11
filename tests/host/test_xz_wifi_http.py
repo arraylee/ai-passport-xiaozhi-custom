@@ -19,8 +19,8 @@ typedef struct {int held;} *SemaphoreHandle_t;
 typedef struct {int content_len,received,code;const char *input;char response[2048];} httpd_req_t;
 typedef struct {unsigned stack_size,max_open_sockets;bool lru_purge_enable;unsigned recv_wait_timeout;} httpd_config_t;
 typedef struct {const char *uri;int method;esp_err_t (*handler)(httpd_req_t *);} httpd_uri_t;
-typedef int wifi_init_config_t;
-#define WIFI_INIT_CONFIG_DEFAULT() 0
+typedef struct {int dynamic_rx_buf_num,static_rx_buf_num,ampdu_rx_enable,ampdu_tx_enable,rx_ba_win;} wifi_init_config_t;
+#define WIFI_INIT_CONFIG_DEFAULT() ((wifi_init_config_t){.dynamic_rx_buf_num=3})
 #define HTTPD_DEFAULT_CONFIG() ((httpd_config_t){0})
 #define ESP_ERR_INVALID_STATE 2
 #define ESP_ERR_NO_MEM 3
@@ -67,7 +67,7 @@ static int esp_netif_init(void){return 0;}
 static int esp_event_loop_create_default(void){return 0;}
 static esp_netif_t *esp_netif_create_default_wifi_sta(void){return (void *)1;}
 static esp_netif_t *esp_netif_create_default_wifi_ap(void){return (void *)2;}
-static int esp_wifi_init(wifi_init_config_t *c){(void)c;return 0;}
+static int esp_wifi_init(wifi_init_config_t *c){assert(c->dynamic_rx_buf_num==8&&c->static_rx_buf_num==4&&c->ampdu_rx_enable&&c->ampdu_tx_enable&&c->rx_ba_win==4);return 0;}
 static int esp_wifi_set_storage(int s){(void)s;return 0;}
 static int esp_event_handler_instance_register(int base,int id,void (*handler)(void *,int,int32_t,void *),void *arg,void **out){(void)base;(void)id;(void)arg;assert(handler==wifi_event);*out=(void *)1;return 0;}
 static int esp_wifi_set_mode(int m){(void)m;return 0;}
@@ -140,7 +140,12 @@ static void portal_dns_poll(void){
 }
 int main(void){
  /* Exercise real successful/failed scan paths and mutex release before worker cases. */
- credential_guard=xSemaphoreCreateMutex();ap=(void *)2;reset(0);portal_outcome_set(PORTAL_IDLE,PORTAL_NONE);
+ credential_guard=xSemaphoreCreateMutex();
+ portal_outcome_set(PORTAL_IDLE,PORTAL_NONE);
+ httpd_req_t manual=post("{\"ssid\":\" Hide 家 \",\"password\":\"test-pass\"}");
+ assert(manual.code==202&&!memcmp(pending.sta.ssid," Hide 家 ",10)&&!strcmp((char*)pending.sta.password,"test-pass"));
+ credentials_ready=false;portal_outcome_set(PORTAL_IDLE,PORTAL_NONE);
+ ap=(void *)2;reset(0);portal_outcome_set(PORTAL_IDLE,PORTAL_NONE);
  httpd_req_t scan={0};assert(!portal_networks(&scan));cJSON *list=cJSON_Parse(scan.response);assert(list&&cJSON_GetArraySize(cJSON_GetObjectItem(list,"networks"))==5);cJSON_Delete(list);assert(!credential_guard->held);
  scan_fail=true;memset(&scan,0,sizeof scan);assert(!portal_networks(&scan)&&scan.code==503&&!credential_guard->held);scan_fail=false;
  assert(xSemaphoreTake(credential_guard,0));httpd_req_t locked=post("{\"ssid_hex\":\"41\",\"password\":\"12345678\"}");assert(locked.code==409&&!credentials_ready);xSemaphoreGive(credential_guard);

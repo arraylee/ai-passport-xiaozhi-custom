@@ -1,5 +1,7 @@
 #include "xiaozhi.h"
 #include "xz_codec_memory.h"
+#include "xz_services.h"
+#include "xz_radio_player.h"
 #include "xz_capture.h"
 #include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
@@ -33,8 +35,32 @@ static portMUX_TYPE guard = portMUX_INITIALIZER_UNLOCKED;
 static atomic_bool running, cancel, requested_talk;
 static atomic_bool requested_interrupt, natural_interrupt;
 static atomic_bool requested_end, requested_resume;
+static atomic_int radio_step;
+#ifdef PASSPORT_TEST_SERVICES
+static atomic_uint test_service;
+static atomic_bool test_radio_network;
+static bool test_service_active;
+bool xiaozhi_test_active(void) { return test_service_active; }
+bool xiaozhi_test_take_network_only(void) { return atomic_exchange(&test_radio_network, false); }
+bool xiaozhi_test_service(unsigned kind) {
+  xz_view_t v; xiaozhi_snapshot(&v);
+  if (!atomic_load(&running) || v.phase!=XZ_LISTEN || kind<1 || kind>3) return false;
+  atomic_store(&test_service,kind);return true;
+}
+#endif
+void xiaozhi_radio_step(int direction) { atomic_store(&radio_step, direction < 0 ? -1 : 1); }
+bool xz_online_cancelled(void) {
+  return atomic_load(&cancel) || atomic_load(&requested_end) || atomic_load(&radio_step);
+}
+static bool online_tool(const char *name, const cJSON *args, char *reply, size_t size) {
+  bool weather=!strcmp(name,"self.weather.get_forecast"),play=!strcmp(name,"self.radio.play_station");
+  bool ok=weather ? xz_weather_query(args,reply,size) : xz_radio_query(args,play,reply,size);
+  ESP_LOGI("xiaozhi","online_tool=%u ok=%u queued=%u stack_free=%u",
+           weather?1:play?3:2,ok,xz_radio_queued(),(unsigned)uxTaskGetStackHighWaterMark(NULL));
+  return ok;
+}
 static atomic_bool welcome_visible, setup_confirmed;
-typedef enum { SESSION_CLOSED, SESSION_PARK, SESSION_RENEW, SESSION_QUIET_BYE, SESSION_INTENT_BYE, SESSION_AUDIO_LOST, SESSION_THEME_FAILED } session_end_t;
+typedef enum { SESSION_CLOSED, SESSION_PARK, SESSION_RENEW, SESSION_QUIET_BYE, SESSION_INTENT_BYE, SESSION_AUDIO_LOST, SESSION_THEME_FAILED, SESSION_RADIO } session_end_t;
 static atomic_bool worker_finished;
 // Owned by the existing plays worker, which also creates/deletes voice_task.
 static TaskHandle_t voice_task;
@@ -360,9 +386,10 @@ static void handle_mcp(channel_t *c, const cJSON *j) {
   const char *session=cJSON_IsString(sid)?sid->valuestring:c->session;
   if (strlen(session)>=sizeof c->session || (c->session[0] && session[0] && strcmp(c->session,session))) return;
   xz_mcp_device_t device={xz_theme_queue_url,xz_theme_queue_reboot,xz_theme_set_dark,
-      XZ_CONSOLE_VERSION,xz_theme_address(),XZ_THEME_LIMIT};
+      XZ_CONSOLE_VERSION,xz_theme_address(),XZ_THEME_LIMIT,c->session[0] ? online_tool : NULL};
   char *reply=xz_mcp_reply(cJSON_GetObjectItemCaseSensitive(j,"payload"),session,&config,&device);
-  if (reply) { (void)send_text(c,reply); cJSON_free(reply); }
+  if (!reply || !send_text(c,reply)) xz_radio_unqueue();
+  cJSON_free(reply);
 }
 static bool command(channel_t *c, const char *type, const char *state) {
   cJSON *j = cJSON_CreateObject();
@@ -874,6 +901,7 @@ static bool reply_audio_missing(bool text, uint32_t written, bool stopped, uint6
   return !written && (stopped ? text && idle_ms >= 1500 : idle_ms >= 10000);
 }
 static session_end_t run_session(bool *wifi_up, xz_quiet_t *quiet, unsigned *missing_replies) {
+  xz_radio_unqueue();
   session_end_t outcome = SESSION_CLOSED;
   bool warm = *wifi_up && xz_wifi_online();
   if (*wifi_up && !warm) { xz_wifi_close(); *wifi_up = false; }
@@ -995,6 +1023,17 @@ static session_end_t run_session(bool *wifi_up, xz_quiet_t *quiet, unsigned *mis
            (unsigned)esp_get_free_heap_size(),
            (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
   while (!atomic_load(&cancel) && !atomic_load(&c->failed)) {
+#ifdef PASSPORT_TEST_SERVICES
+    unsigned testing=atomic_exchange(&test_service,0);
+    test_service_active=testing!=0;
+    if (testing) {
+      atomic_store(&test_radio_network, testing == 3);
+      const char *request=testing==1 ?
+          "{\"type\":\"mcp\",\"payload\":{\"jsonrpc\":\"2.0\",\"id\":-21,\"method\":\"tools/call\",\"params\":{\"name\":\"self.weather.get_forecast\",\"arguments\":{\"city\":\"北京\"}}}}" :
+          "{\"type\":\"mcp\",\"payload\":{\"jsonrpc\":\"2.0\",\"id\":-22,\"method\":\"tools/call\",\"params\":{\"name\":\"self.radio.play_station\",\"arguments\":{\"station\":\"深圳音乐广播\"}}}}";
+      channel_push(c,request,strlen(request),0,strlen(request));
+    }
+#endif
     if (saved_avatar != atomic_load(&avatar)) {
       saved_avatar = atomic_load(&avatar);
       persist_avatar(saved_avatar);
@@ -1019,7 +1058,39 @@ static session_end_t run_session(bool *wifi_up, xz_quiet_t *quiet, unsigned *mis
             *line = cJSON_GetObjectItem(j, "text");
       if (cJSON_IsString(type)) {
         if (!strcmp(type->valuestring,"mcp")) {
+          const cJSON *rpc=cJSON_GetObjectItemCaseSensitive(j,"payload");
+          const cJSON *params=cJSON_GetObjectItemCaseSensitive(rpc,"params");
+          const char *name=xz_arg_text(params,"name"), *sid=xz_arg_text(j,"session_id");
+          bool online=(!*sid || !strcmp(sid,c->session)) && !strcmp(xz_arg_text(rpc,"method"),"tools/call") &&
+              (!strcmp(name,"self.weather.get_forecast") || !strcmp(name,"self.radio.list_stations") || !strcmp(name,"self.radio.play_station"));
+          if (online) {
+            /* Keep the contiguous Opus reservation. xz_http_visit borrows its
+             * idle storage only for this task's temporary TLS buffers; MQTT,
+             * JSON and saved station results must not fragment it. */
+            if (encoder) { esp_opus_enc_close(encoder); encoder=NULL; }
+            if (decoder) { esp_opus_dec_close(decoder); decoder=NULL; }
+            if (audio_owned) {
+              hal_audio_set_out_mute(config.audio,true);
+              hal_audio_set_echo_capture(config.audio,false);
+              config.release_audio(config.user); audio_owned=false; echo_owned=false;
+            }
+            xz_capture_destroy(capture); capture=NULL;
+            status(working.phase==XZ_SPEAK ? XZ_SPEAK : XZ_THINK,
+                   !strcmp(name,"self.weather.get_forecast") ? "正在查询天气" : "正在查找电台");
+            codec_arena_metric(6);
+          }
           handle_mcp(c,j);
+          if (online) {
+            if (xz_radio_queued()) { cJSON_Delete(j); outcome=SESSION_RADIO; break; }
+            if (!atomic_load(&cancel) && !atomic_load(&requested_end)) {
+              if (atomic_load(&natural_interrupt)) capture=xz_capture_create();
+              if (atomic_load(&natural_interrupt) && !capture) {
+                cJSON_Delete(j); status(XZ_ERROR,"语音内存不足，按对话重试"); break;
+              }
+            }
+            codec_arena_metric(7);
+            last_action=last_audio=ms();
+          }
         } else if (!strcmp(type->valuestring,"llm")) {
           cJSON *e=cJSON_GetObjectItemCaseSensitive(j,"emotion");
           int emotion=cJSON_IsString(e)?xz_emotion_index(e->valuestring):-1;
@@ -1056,7 +1127,7 @@ static session_end_t run_session(bool *wifi_up, xz_quiet_t *quiet, unsigned *mis
           } else if (!strcmp(state->valuestring, "sentence_start") &&
                      cJSON_IsString(line) && working.phase == XZ_SPEAK) {
             if (line->valuestring[0]) tts_text = true;
-            status(XZ_SPEAK, line->valuestring);
+            status(XZ_SPEAK, xz_display_text(line->valuestring));
           }
         } else if (!strcmp(type->valuestring, "stt") && cJSON_IsString(line)) {
           // Some sessions deliver the user's transcript after TTS start.
@@ -1088,6 +1159,12 @@ static session_end_t run_session(bool *wifi_up, xz_quiet_t *quiet, unsigned *mis
       vTaskDelay(pdMS_TO_TICKS(200));
       esp_restart();
     }
+#ifdef PASSPORT_TEST_SERVICES
+    test_service_active=false;
+    if (testing==1 && outcome==SESSION_CLOSED && working.phase!=XZ_ERROR) {
+      status(XZ_READY,"正在继续收听");atomic_store(&requested_talk,true);
+    }
+#endif
     if (outcome != SESSION_CLOSED || working.phase == XZ_ERROR || atomic_load(&cancel)) break;
     if (atomic_load(&requested_end)) continue;
     // Ignore a late button event after a reply has already finished. Keeping
@@ -1356,8 +1433,13 @@ finish:
   free(packet);
   if (codec_memory_owned) {
     codec_arena_metric(9);
-    bool clean = xz_codec_memory_end();
-    if (!clean) ESP_LOGW(TAG, "codec arena reclaimed live allocations");
+    // Carry the contiguous region into radio playback. Reserve MP3's largest
+    // buffer too; its remaining state opens after the HTTPS handshake finishes.
+    bool radio_memory = outcome == SESSION_RADIO && xz_codec_memory_network_only();
+    if (!radio_memory) {
+      bool clean = xz_codec_memory_end();
+      if (!clean) ESP_LOGW(TAG, "codec arena reclaimed live allocations");
+    }
   }
   persist_avatar(atomic_load(&avatar));
   return outcome;
@@ -1390,14 +1472,37 @@ static void run(void *arg) {
   while (!atomic_load(&cancel)) {
     uint64_t session_at = ms();
     session_end_t reason = run_session(&wifi_up, &quiet, &missing_replies);
-    if (atomic_load(&cancel)) break;
-    if (!wifi_up || working.phase == XZ_ERROR) break;
-    if (atomic_exchange(&requested_end, false)) reason = SESSION_PARK;
+    if (atomic_load(&cancel) || !wifi_up || working.phase == XZ_ERROR) {
+      if (reason == SESSION_RADIO) xz_codec_memory_end();
+      break;
+    }
+    if (atomic_exchange(&requested_end, false)) {
+      if (reason == SESSION_RADIO) xz_codec_memory_end();
+      reason = SESSION_PARK;
+    }
     if (reason == SESSION_CLOSED) break;
     const char *idle_text = reason==SESSION_THEME_FAILED?"主题未安装，按对话继续":"按对话开始聊天";
     // Closing a cloud stream does not end our listening window. Only a peer
     // that repeatedly closes immediately enters the recoverable network state.
-    if (reason == SESSION_AUDIO_LOST) {
+    if (reason == SESSION_RADIO) {
+      xz_radio_unqueue();
+      atomic_store(&radio_step,0);
+      int step=0;
+      do {
+        const xz_station_t *station=xz_radio_select(step);
+        if (!station) break;
+        status(XZ_RADIO,station->name);
+        bool streamed=xz_radio_stream(&config,station);
+        if (atomic_load(&cancel) || atomic_load(&requested_end)) break;
+        step=atomic_exchange(&radio_step,0);
+        if (!step) idle_text=streamed?"电台已结束，按对话继续":"电台暂时无法播放，按对话重选";
+      } while (step);
+      atomic_store(&requested_end,false);
+      atomic_store(&radio_step,0);
+      codec_arena_metric(8);
+      xz_codec_memory_end();
+      if (atomic_load(&cancel)) break;
+    } else if (reason == SESSION_AUDIO_LOST) {
       if (++missing_replies <= 1) {
         ESP_LOGI(TAG,"audio_channel_recovery=1");
         status(XZ_WAKING,"语音连接恢复中");
@@ -1439,6 +1544,7 @@ static void run(void *arg) {
       status(XZ_WAKING, "正在开始对话");
     }
   }
+  xz_radio_forget();
   xz_wifi_close();
   finish_status();
   ESP_LOGI(TAG, "voice cleanup heap=%u stack_free=%u",

@@ -169,6 +169,23 @@ int main(int argc, char **argv) {
     lv_display_set_buffers(display, draw_buffer, NULL, sizeof(draw_buffer), LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(display, flush);
 #endif
+    if(getenv("RADIO_PREVIEW_ONLY")) {
+        ui_xiaozhi_set_battery(72,4);
+        xz_view_t v={.phase=XZ_SETUP,.revision=1};
+        strcpy(v.hotspot,"AI-PASSPORT-ABCD");
+        ui_xiaozhi_open(&v,NULL);screenshot("setup");
+        v.phase=XZ_RADIO;v.revision++;strcpy(v.detail,"深圳飞扬971");
+        ui_xiaozhi_update(&v,NULL);screenshot("radio-connecting");
+        v.output_active=true;ui_xiaozhi_update(&v,NULL);
+        for(unsigned i=0;i<24;i++) {
+            char name[40];snprintf(name,sizeof name,"radio-%02u",i);
+            lv_tick_inc(120);screenshot(name);
+        }
+        v.output_active=false;ui_xiaozhi_update(&v,NULL);screenshot("radio-buffering");
+        v.phase=XZ_STANDBY;v.revision++;strcpy(v.detail,"按对话开始聊天");
+        ui_xiaozhi_update(&v,NULL);screenshot("radio-return");
+        ui_xiaozhi_close();return 0;
+    }
     bool factory_boot = getenv("SELFTEST_PREVIEW_ONLY") != NULL;
     // app_main skips navigation and saved-avatar restoration in factory boot.
     if (!factory_boot) lv_group_set_default(lv_group_create());

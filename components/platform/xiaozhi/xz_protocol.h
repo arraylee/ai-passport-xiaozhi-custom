@@ -8,6 +8,9 @@ bool xz_hex16(const char *text, uint8_t out[16]);
 bool xz_udp_valid(const uint8_t *data, size_t size, uint32_t previous,
                   uint32_t *sequence);
 void xz_text_copy(char *out, size_t cap, const char *text);
+// Replace accidental tool-call markup in server subtitles with a player-facing
+// progress hint. Ordinary speech, numbers and non-tool code remain unchanged.
+const char *xz_display_text(const char *text);
 /* Fragment accumulator: a new offset=0 replaces any incomplete message. */
 typedef struct {
   char data[XZ_JSON_MAX + 1];

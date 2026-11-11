@@ -298,6 +298,7 @@ static void button(const play_event_t *event) {
         }
         platform_lvgl_unlock();
         if (action == UI_XZ_TALK) xiaozhi_talk();
+        else if (action == UI_XZ_RADIO_PREV || action == UI_XZ_RADIO_NEXT) xiaozhi_radio_step(action == UI_XZ_RADIO_PREV ? -1 : 1);
         else if (action == UI_XZ_BEGIN_SETUP) xiaozhi_begin_setup();
         else if (action == UI_XZ_INTERRUPT) xiaozhi_interrupt();
         else if (action == UI_XZ_RESUME) xiaozhi_resume();
@@ -588,7 +589,7 @@ bool app_plays_open_xiaozhi(int best) {
 bool app_plays_voice_busy(void) {
     if (atomic_load(&active) != UI_PLAY_XIAOZHI) return false;
     xz_view_t view; xiaozhi_snapshot(&view);
-    return view.phase == XZ_FAREWELL || view.phase == XZ_WAKING || view.phase == XZ_LISTEN || view.phase == XZ_THINK || view.phase == XZ_SPEAK ||
+    return view.phase == XZ_RADIO || view.phase == XZ_FAREWELL || view.phase == XZ_WAKING || view.phase == XZ_LISTEN || view.phase == XZ_THINK || view.phase == XZ_SPEAK ||
         view.phase == XZ_BOOT || (view.phase == XZ_WELCOME && view.output_active) ||
         view.phase == XZ_BIND || view.phase == XZ_WIFI || view.phase == XZ_CLOUD;
 }
