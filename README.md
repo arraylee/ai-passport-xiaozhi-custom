@@ -2,9 +2,20 @@
 
 适用于 AI PASSPORT ESP32-C3 / 8 MB 板卡的独立固件，沿用已经验证的默认固件硬件支持与小智交互升级。
 
-当前版本 **2.1.0-xiaozhi.27**，小智控制台上报版本 **2.1.0.27**，使用 **ESP-IDF v5.5.3** 构建。
+当前版本 **2.1.0-xiaozhi.28**，小智控制台上报版本 **2.1.0.28**，使用 **ESP-IDF v5.5.3** 构建。
+
+## .28 手机配网与动态扫描提示
+
+- 附近网络列表上方直接显示「正在查找附近的 2.4G 网络」和动态省略号，扫描时保持清晰可读；完成或失败后恢复「重新扫描」，可再次尝试。等待时也可切换到「手动添加网络」。
+- 动效仅由手机网页的 CSS 播放，不增加设备端任务、动画图片或扫描频率；手机开启减少动态效果时显示静态提示。
+- 沿用 .27 的两个手机连接名额、后台扫描和失联网页连接回收。相较正式版 .25，A 手机尚未释放 Wi-Fi 连接时，B 手机也有连接名额。退出网页不等同于关闭手机 Wi-Fi。
+- 休眠保持原设置，默认无操作 5 分钟；后台探测不延长休眠，唤醒后可继续配网。完整小程序镜像仍为 **5,687,560 字节（5.69 MB）**，人物、主题和多语言字库保留。
+- 已在原测试卡仅更新应用并校验其余分区未改变，正常启动、连回保存的 Wi-Fi。用户确认两台手机切换与扫描正常，测试 iPhone 自动弹窗在 5 秒以内；该时间是本次实测结果，不保证所有手机或网络环境一致。
+- 240 项主机回归、70 项应用测试、88 项工具测试、按键/休眠检查和协议 4 安装器模拟通过；配网页另通过三种手机尺寸及动态效果检查。详细范围见安装包内测试记录，GitHub 发布不代表社区已通过审核。
 
 ## .27 保留配网休眠与换手机连接
+
+本节保留 .27 测试版记录；.28 的实机反馈和当前验证范围见上文。
 
 - 配网等待恢复原有休眠规则：默认无操作 5 分钟休眠，按设置可调整或关闭。主动扫描、提交配网和设备按键会重新计时；手机的后台探测、连接结果轮询和 TCP 保活不会让设备一直醒着。休眠后按键唤醒，再连接热点继续配网。
 - 保留两个手机连接名额、后台扫描、扫描提示和 iPhone 探测入口。换手机不会绑定原手机，也不会因为原手机离开而关闭正在使用的配网页或取消已提交的路由器连接。
@@ -71,7 +82,7 @@
 用于 [FoloToy 小程序玩法安装器](https://github.com/FoloToy/ai-passport-miniapp-installer/blob/main/README.zh_CN.md)的文件是以 `-miniapp.bin` 结尾的合并固件，**5,687,560 字节（5.69 MB）**。保留小智对话、语音调节、官方主题、多语言字库、开机音乐和两个动态形象。人物帧无损压缩，显示时按四行解开；官方主题包空间仍为 920 KiB。为给常驻安装器留空间，自传相册/头像的 JPEG 上限改为每张 28 KiB，自传音频分区为 80 KiB。这些限制不作用于小智对话语音。
 
 1. 通过微信小程序安装时，卡上需已有**协议 4** 的小程序玩法安装器。首次安装或从旧协议升级，请先按[官方说明](https://github.com/FoloToy/ai-passport-miniapp-installer/blob/main/docs/development/engineering/ble-recovery-compatibility.zh_CN.md)通过 USB 刷入安装器的**首刷整包**。此操作会清除原玩法和配置。小智的 BIN 不含常驻安装器。
-2. 在安装模式下，从 AI Passport 微信小程序的「设备」页连接卡，首次配置 2.4 GHz Wi-Fi。待玩法 72 上架此版本后，在社区打开「小智 AI 对话机器人」，确认显示 **.27**，点「安装到设备」，保持供电和联网直到重启。以后关机后同时按开机键和上键，可重新进入安装模式。本地生成安装包不代表社区已发布。
+2. 在安装模式下，从 AI Passport 微信小程序的「设备」页连接卡，首次配置 2.4 GHz Wi-Fi。待玩法 72 上架此版本后，在社区打开「小智 AI 对话机器人」，确认显示 **.28**，点「安装到设备」，保持供电和联网直到重启。以后关机后同时按开机键和上键，可重新进入安装模式。本地生成安装包不代表社区已发布。
 3. 小智会优先尝试已有的可用网络，也可在菜单「重新配网」。通过小程序换装会重置小智本地设置；若屏幕显示激活码，请按提示绑定，音量、形象或自定义主题需要重新选择。此包不用于旧版 USB 保留配置升级。
 
 ## 使用体验
@@ -163,7 +174,7 @@ python scripts/package_firmware.py --output output/delivery --min-usb-free-bytes
 
 ```sh
 idf.py -B build-miniapp -DSDKCONFIG="$PWD/build-miniapp/sdkconfig" -DPASSPORT_MINIAPP=ON build
-python tools/pack_miniapp.py --build-dir build-miniapp --output releases/AI-PASSPORT-Xiaozhi-2.1.0-xiaozhi.27-miniapp.bin
+python tools/pack_miniapp.py --build-dir build-miniapp --output releases/AI-PASSPORT-Xiaozhi-2.1.0-xiaozhi.28-miniapp.bin
 ```
 
 安装兼容测试使用上游协议 4 的真实分区与流式写入代码，见 `tests/miniapp_recovery/run.py --help`。测试替代的是无线、Flash 和硬件验镜像接口，不是微信客户端或卡上的实测。小程序版本使用的启动钩子来自 [FoloToy 安装器 127c56b](https://github.com/FoloToy/ai-passport-miniapp-installer/tree/127c56bc97b7ea85bf4bfd2b52ce4e2d80a30566/bootloader_components/recovery_boot_hook)，原 MIT 许可随源码保留。

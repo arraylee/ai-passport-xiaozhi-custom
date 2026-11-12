@@ -24,7 +24,7 @@ async function page({pending=0}={}){
 (async()=>{
  const waiting=await page({pending:2});
  assert(!waiting.e['scan-progress'].hidden&&waiting.e.scan.disabled);
- assert(waiting.e.scan.textContent.includes('正在扫描'));assert.equal(waiting.e.choices.children.length,0);
+ assert(waiting.e['scan-label'].textContent.includes('正在查找附近的 2.4G 网络'));assert.equal(waiting.e.choices.children.length,0);
  await waiting.next();assert(!waiting.e['scan-progress'].hidden);await waiting.next();
  assert(waiting.e['scan-progress'].hidden&&!waiting.e.scan.disabled&&waiting.e.choices.children.length===2);
  assert.deepEqual(waiting.calls,['/networks','/networks','/networks'],'First visit and polls can reuse the shared device scan');
