@@ -321,6 +321,7 @@ enum {XZ_OFFICIAL_AVATAR=2,SESSION_THEME_FAILED=9,SESSION_RADIO=10};
 static int outcome;
 static bool xz_theme_pending_boot(void){return false;}
 static bool xz_theme_download(const atomic_bool *c){(void)c;assert(0);return false;}
+static const char *xz_theme_last_error(void){return "theme failure";}
 static void xz_theme_cancel_download(void){assert(0);}
 static void persist_avatar(unsigned a){(void)a;assert(0);}
 static void esp_restart(void){assert(0);}

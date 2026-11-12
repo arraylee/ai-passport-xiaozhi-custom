@@ -289,8 +289,10 @@ def _segment(name, archive_name, source, offset, region_start, region_end):
     )
 
 
-def validate_release_inputs(build_dir, app_bin):
+def validate_release_inputs(build_dir, app_bin, min_app_free_bytes=APP_MIN_FREE_BYTES):
     """Validate the locked map, six build segments, sizes and write offsets."""
+    if type(min_app_free_bytes) is not int or not 0 <= min_app_free_bytes <= 0x300000:
+        raise RuntimeError("应用分区预留余量无效")
     build_dir = Path(build_dir)
     app_name = Path(app_bin).name
     expected_flash = _expected_flash_files(app_name)
@@ -333,9 +335,9 @@ def validate_release_inputs(build_dir, app_bin):
                  0x600000, 0x600000, 0x800000),
     )
     app_free = segments[2].region_end - segments[2].region_start - segments[2].size
-    if app_free < APP_MIN_FREE_BYTES:
+    if app_free < min_app_free_bytes:
         raise RuntimeError(
-            f"应用分区余量不足: {app_free} B，发布至少需要 {APP_MIN_FREE_BYTES} B；"
+            f"应用分区余量不足: {app_free} B，发布至少需要 {min_app_free_bytes} B；"
             "请使用 SIZE 编译优化并检查资源增长，不要移动 cardid 分区"
         )
     if segments[1].size != 0xC00:
@@ -434,6 +436,10 @@ def _firmware_manifest(segments, metadata):
         "version": metadata["version"],
         "target": metadata["target"],
         "flash_size": metadata["flash_size"],
+        "application_headroom": {
+            "free_bytes": segments[2].region_end - segments[2].region_start - segments[2].size,
+            "minimum_bytes": metadata.get("min_app_free_bytes", APP_MIN_FREE_BYTES),
+        },
         "periph": metadata["periph"],
         "source": {
             "branch": metadata["branch"],
@@ -479,6 +485,8 @@ def _human_manifest(segments, metadata):
     status_note = (
         "INTERMEDIATE SNAPSHOT：由 --no-build 使用现有 build 生成，不是最终发布包。"
         if metadata["status"] == "intermediate"
+        else "Verified build：从已构建并校验的镜像打包，BIN 内容未修改。"
+        if metadata["status"] == "verified-build"
         else "Release package：由本次 release.py 构建结果生成。"
     )
     segment_args = " \\\n  ".join(
@@ -520,12 +528,13 @@ SPEEXDSP-LICENSE.txt 与 WEBRTC-VAD-LICENSE.txt 保留回声消除、语音检�
 
 
 def write_release_artifacts(build_dir, archive_path, standalone_app_path,
-                            app_bin, metadata):
+                            app_bin, metadata, min_app_free_bytes=APP_MIN_FREE_BYTES):
     """Validate build inputs, then atomically write a flat ZIP and app BIN."""
     build_dir = Path(build_dir)
     archive_path = Path(archive_path)
     standalone_app_path = Path(standalone_app_path)
-    segments = validate_release_inputs(build_dir, app_bin)
+    segments = validate_release_inputs(build_dir, app_bin, min_app_free_bytes)
+    metadata = dict(metadata, min_app_free_bytes=min_app_free_bytes)
     archive_path.parent.mkdir(parents=True, exist_ok=True)
     standalone_app_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -620,6 +629,8 @@ def main(argv=None):
         "--no-build", action="store_true",
         help="package the existing build as an intermediate snapshot",
     )
+    parser.add_argument("--min-app-free-bytes", type=lambda s: int(s, 0), default=APP_MIN_FREE_BYTES,
+                        help="explicit Flash growth reserve, recorded in manifest; default 256 KiB")
     args = parser.parse_args(argv)
 
     if not args.no_build:
@@ -675,7 +686,8 @@ def main(argv=None):
     }
     try:
         segments = write_release_artifacts(
-            BUILD, archive_path, app_path, app_bin=app_bin, metadata=metadata
+            BUILD, archive_path, app_path, app_bin=app_bin, metadata=metadata,
+            min_app_free_bytes=args.min_app_free_bytes
         )
     except RuntimeError as exc:
         parser.error(str(exc))

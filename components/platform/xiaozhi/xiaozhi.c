@@ -932,7 +932,7 @@ static session_end_t run_session(bool *wifi_up, xz_quiet_t *quiet, unsigned *mis
     }
     if (atomic_load(&cancel)) goto finish;
     if (xz_theme_pending_boot()) xz_theme_cancel_download();
-    status(XZ_STANDBY,"主题下载失败，按对话继续");
+    status(XZ_STANDBY,xz_theme_last_error());
     outcome=SESSION_THEME_FAILED; goto finish;
   }
   if (!xz_codec_memory_begin()) {
@@ -1481,7 +1481,7 @@ static void run(void *arg) {
       reason = SESSION_PARK;
     }
     if (reason == SESSION_CLOSED) break;
-    const char *idle_text = reason==SESSION_THEME_FAILED?"主题未安装，按对话继续":"按对话开始聊天";
+    const char *idle_text = reason==SESSION_THEME_FAILED?xz_theme_last_error():"按对话开始聊天";
     // Closing a cloud stream does not end our listening window. Only a peer
     // that repeatedly closes immediately enters the recoverable network state.
     if (reason == SESSION_RADIO) {

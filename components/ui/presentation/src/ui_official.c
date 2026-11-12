@@ -11,23 +11,29 @@ static xz_theme_font_t packed_font;
 static lv_font_t text_font;
 static const uint8_t *font_source;
 static lv_image_dsc_t face_image, background;
+static unsigned face_edge = XZ_ICON_EDGE;
+static int face_top;
+static bool face_rows;
 // External packs do not align their RGB565 data. Copy the visible part of one
 // row to an aligned drawing buffer before the C3's renderer reads 16-bit pixels.
 static lv_result_t wallpaper_info(lv_image_decoder_t *decoder, lv_image_decoder_dsc_t *d,
                                   lv_image_header_t *h) {
   (void)decoder;
-  if (d->src_type != LV_IMAGE_SRC_VARIABLE || d->src != &background || !background.data ||
-      background.data_size != 240 * 320 * 2)
+  if (d->src_type != LV_IMAGE_SRC_VARIABLE ||
+      (d->src != &background && d->src != &face_image))
     return LV_RESULT_INVALID;
-  *h = background.header;
-  h->cf = LV_COLOR_FORMAT_RGB565;
+  const lv_image_dsc_t *src = d->src;
+  if (!src->data || (src == &background && src->data_size != 240*320*2))
+    return LV_RESULT_INVALID;
+  *h = src->header;
+  h->cf = src == &background ? LV_COLOR_FORMAT_RGB565 : LV_COLOR_FORMAT_RGB565A8;
   return LV_RESULT_OK;
 }
 static lv_result_t wallpaper_open(lv_image_decoder_t *decoder, lv_image_decoder_dsc_t *d) {
   (void)decoder;
-  if (d->src != &background)
+  if (d->src != &background && d->src != &face_image)
     return LV_RESULT_INVALID;
-  d->user_data = lv_draw_buf_create(240, 1, LV_COLOR_FORMAT_RGB565, LV_STRIDE_AUTO);
+  d->user_data = lv_draw_buf_create(d->header.w, 1, d->header.cf, LV_STRIDE_AUTO);
   if (!d->user_data)
     return LV_RESULT_INVALID;
   d->args.no_cache = true;
@@ -37,18 +43,29 @@ static lv_result_t wallpaper_open(lv_image_decoder_t *decoder, lv_image_decoder_
 static lv_result_t wallpaper_row(lv_image_decoder_t *decoder, lv_image_decoder_dsc_t *d,
                                  const lv_area_t *area, lv_area_t *result) {
   (void)decoder;
-  if (!area || !result || area->x1 < 0 || area->x2 >= 240 || area->x2 < area->x1 || area->y1 < 0 ||
-      area->y2 >= 320 || area->y2 < area->y1)
+  if (!area || !result || area->x1 < 0 || area->x2 >= d->header.w || area->x2 < area->x1 || area->y1 < 0 ||
+      area->y2 >= d->header.h || area->y2 < area->y1)
     return LV_RESULT_INVALID;
   int y = result->y1 == LV_COORD_MIN ? area->y1 : result->y2 + 1;
   if (y < area->y1 || y > area->y2)
     return LV_RESULT_INVALID;
   unsigned width = area->x2 - area->x1 + 1;
   lv_draw_buf_t *row =
-      lv_draw_buf_reshape(d->user_data, LV_COLOR_FORMAT_RGB565, width, 1, LV_STRIDE_AUTO);
+      lv_draw_buf_reshape(d->user_data, d->header.cf, width, 1, LV_STRIDE_AUTO);
   if (!row)
     return LV_RESULT_INVALID;
-  memcpy(row->data, background.data + 480 * y + 2 * area->x1, 2 * width);
+  if (d->src == &background)
+    memcpy(row->data, background.data + 480 * y + 2 * area->x1, 2 * width);
+  else {
+    // Scale from mapped Flash one visible row at a time. LVGL must not allocate
+    // an entire transformed 128x128 image while voice/network buffers are live.
+    unsigned sy = y * face_edge / d->header.h;
+    for (unsigned x = 0; x < width; x++) {
+      unsigned sx = (area->x1 + x) * face_edge / d->header.w, i = sy * face_edge + sx;
+      memcpy(row->data + 2*x, face_image.data + 2*i, 2);
+      row->data[row->header.stride + x] = face_image.data[2*face_edge*face_edge + i];
+    }
+  }
   if (d->args.flush_cache)
     lv_draw_buf_flush_cache(row, NULL);
   d->decoded = row;
@@ -132,7 +149,9 @@ lv_obj_t *ui_official_stage(lv_obj_t *root, int y) {
   // Only an explicit wallpaper needs a viewport. Transparent expressions are
   // direct children of the screen, including when a pack supplies only colors.
   const xz_skin_t *s = skin();
-  if (s && s->image.data && wallpaper_decoder()) {
+  face_rows = wallpaper_decoder();
+  face_top = y;
+  if (s && s->image.data && face_rows) {
     lv_obj_t *stage = lv_obj_create(root);
     lv_obj_remove_style_all(stage);
     lv_obj_set_pos(stage, 12, y);
@@ -152,7 +171,7 @@ lv_obj_t *ui_official_stage(lv_obj_t *root, int y) {
   lv_obj_t *image = lv_image_create(root);
   lv_obj_align(image, LV_ALIGN_TOP_MID, 0, y + (144 - XZ_ICON_EDGE) / 2);
   face_image = (lv_image_dsc_t){.header = {.magic = LV_IMAGE_HEADER_MAGIC,
-                                           .cf = LV_COLOR_FORMAT_RGB565A8,
+                                           .cf = face_rows ? LV_COLOR_FORMAT_RAW : LV_COLOR_FORMAT_RGB565A8,
                                            .w = XZ_ICON_EDGE,
                                            .h = XZ_ICON_EDGE,
                                            .stride = 2 * XZ_ICON_EDGE},
@@ -171,6 +190,8 @@ unsigned ui_official_expression(lv_obj_t *image, const xz_view_t *v, uint32_t el
     e = (v->phase == XZ_READY || v->phase == XZ_FAREWELL) ? 1 : 0;
   unsigned delay = 0;
   const uint8_t *p = xz_theme_icon(e, elapsed, &delay);
+  unsigned display_edge = XZ_ICON_EDGE;
+  unsigned edge = p ? xz_theme_icon_edge(e, &display_edge) : XZ_ICON_EDGE;
   if (!p) {
     unsigned idx = e == 11                        ? 2
                    : e == 18                      ? 3
@@ -180,9 +201,16 @@ unsigned ui_official_expression(lv_obj_t *image, const xz_view_t *v, uint32_t el
                                                   : 0;
     p = companion_official_icon(idx);
   }
-  if (p && p != face_image.data) {
+  if (!face_rows)
+    display_edge = edge;
+  if (p && (p != face_image.data || display_edge != face_image.header.w)) {
+    face_edge = edge;
+    face_image.header.w = face_image.header.h = display_edge;
+    face_image.header.stride = 2 * display_edge;
+    face_image.data_size = 3 * edge * edge;
     face_image.data = p;
     lv_image_set_src(image, &face_image);
+    lv_obj_align(image, LV_ALIGN_TOP_MID, 0, face_top + (144 - display_edge) / 2);
     lv_obj_invalidate(image);
   }
   return delay;

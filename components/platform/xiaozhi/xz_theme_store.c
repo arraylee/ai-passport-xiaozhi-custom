@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { CACHE_HEADER = 256, RECORD = 4 + XZ_ICON_BYTES, URL_MAX = 768 };
+enum { CACHE_HEADER = 256, URL_MAX = 768, PIXEL_BLOCK = 1024 };
 typedef struct {
   uint8_t first, count;
 } frames_t;
@@ -23,11 +23,15 @@ static atomic_bool ready;
 static bool boot_job;
 static const uint8_t *cached;
 static frames_t frames[XZ_EMOTIONS];
+static unsigned cache_edge = XZ_ICON_EDGE;
+static unsigned record_size(void) { return 4 + 3 * cache_edge * cache_edge; }
 static atomic_bool dark = true, requested_reboot;
 static const esp_partition_t *assets, *cache;
 static esp_partition_mmap_handle_t asset_handle, cache_handle;
 static const uint8_t *mapped_asset;
 static const char *space = "xz_theme";
+static const char *theme_error = "主题下载失败\n检查网络后重试";
+const char *xz_theme_last_error(void) { return theme_error; }
 static bool set_u8(const char *name, unsigned v) {
   nvs_handle_t h;
   if (nvs_open(space, NVS_READWRITE, &h) != ESP_OK)
@@ -96,37 +100,48 @@ typedef struct {
 } frame_sink_t;
 static bool write_frame(void *ctx, const xz_rgba_t *rgba, unsigned delay) {
   frame_sink_t *s = ctx;
-  if (CACHE_HEADER + (s->next + 1) * RECORD > cache->size)
+  unsigned record = record_size(), pixels = cache_edge * cache_edge;
+  unsigned at = CACHE_HEADER + s->next * record;
+  if (at + record > cache->size)
     return false;
   uint8_t *p = s->block;
   p[0] = delay;
   p[1] = delay >> 8;
   p[2] = p[3] = 0;
-  for (unsigned i = 0; i < 32 * 32; i++) {
-    unsigned rgb = ((rgba[i].r >> 3) << 11) | ((rgba[i].g >> 2) << 5) | (rgba[i].b >> 3);
-    p[4 + 2 * i] = rgb;
-    p[5 + 2 * i] = rgb >> 8;
-    p[4 + 2048 + i] = rgba[i].a;
-  }
-  if (esp_partition_write(cache, CACHE_HEADER + s->next * RECORD, p, RECORD) != ESP_OK)
+  if (esp_partition_write(cache, at, p, 4) != ESP_OK)
     return false;
+  for (unsigned i = 0; i < pixels; i += PIXEL_BLOCK) {
+    for (unsigned j = 0; j < PIXEL_BLOCK; j++) {
+      const xz_rgba_t *c = &rgba[i+j];
+      unsigned rgb = ((c->r >> 3) << 11) | ((c->g >> 2) << 5) | (c->b >> 3);
+      p[2*j] = rgb;
+      p[2*j+1] = rgb >> 8;
+    }
+    if (esp_partition_write(cache, at + 4 + 2*i, p, 2*PIXEL_BLOCK) != ESP_OK)
+      return false;
+    for (unsigned j = 0; j < PIXEL_BLOCK; j++)
+      p[j] = rgba[i+j].a;
+    if (esp_partition_write(cache, at + 4 + 2*pixels + i, p, PIXEL_BLOCK) != ESP_OK)
+      return false;
+  }
   s->next++;
   return true;
 }
 typedef struct {
-  uint32_t magic, source_crc, count, frame_crc;
+  uint32_t magic, source_crc, count, frame_crc, edge;
   frames_t lists[XZ_EMOTIONS];
 } cache_header_t;
 _Static_assert(sizeof(cache_header_t) <= CACHE_HEADER, "cache header");
 static bool load_cache(uint32_t crc) {
   cache_header_t h;
-  if (esp_partition_read(cache, 0, &h, sizeof h) != ESP_OK || h.magic != 0x31434d45 ||
-      h.source_crc != crc || h.count > (cache->size - CACHE_HEADER) / RECORD)
+  if (esp_partition_read(cache, 0, &h, sizeof h) != ESP_OK || h.magic != 0x32434d45 ||
+      h.edge != cache_edge || h.source_crc != crc ||
+      h.count > (cache->size - CACHE_HEADER) / record_size())
     return false;
   for (unsigned i = 0; i < XZ_EMOTIONS; i++)
     if (h.lists[i].first + h.lists[i].count > h.count)
       return false;
-  size_t n = CACHE_HEADER + h.count * RECORD;
+  size_t n = CACHE_HEADER + h.count * record_size();
   if (esp_partition_mmap(cache, 0, n, ESP_PARTITION_MMAP_DATA, (const void **)&cached,
                          &cache_handle) != ESP_OK)
     return false;
@@ -140,28 +155,56 @@ static bool load_cache(uint32_t crc) {
 }
 static bool bake_cache(uint32_t crc) {
   unsigned left = 0;
-  for (unsigned i = 0; i < XZ_EMOTIONS; i++)
-    if (installed.icons[i].data)
+  bool png_only = true, large = false;
+  uint8_t owners[XZ_EMOTIONS];
+  for (unsigned i = 0; i < XZ_EMOTIONS; i++) {
+    owners[i] = i;
+    if (!installed.icons[i].data)
+      continue;
+    // The official custom packer shares one file between multiple emotions.
+    // Reuse its baked frames instead of decoding/writing the same PNG 21 times.
+    for (unsigned j = 0; j < i; j++)
+      if (installed.icons[i].data == installed.icons[j].data &&
+          installed.icons[i].size == installed.icons[j].size) {
+        owners[i] = j;
+        break;
+      }
+    if (owners[i] == i) {
       left++;
+      unsigned size = xz_theme_png_size(installed.icons[i]);
+      png_only &= size != 0;
+      large |= size > 64;
+    }
+  }
   if (!left)
     return true;
+  // Keep GIF frame budgets intact. Static packs can use a sharper cache when
+  // every distinct image fits; aliases share the same frame and resolution.
+  cache_edge = png_only && large && left <= (cache->size - CACHE_HEADER) / (4 + 64*64*3)
+                   ? 64 : XZ_ICON_EDGE;
   if (load_cache(crc))
     return true;
   if (esp_partition_erase_range(cache, 0, cache->size) != ESP_OK)
     return false;
-  cache_header_t h = {.magic = 0x31434d45, .source_crc = crc};
-  frame_sink_t s = {.block = malloc(RECORD)};
+  cache_header_t h = {.magic = 0x32434d45, .source_crc = crc, .edge = cache_edge};
+  frame_sink_t s = {.block = malloc(2 * PIXEL_BLOCK)};
   if (!s.block)
     return false;
   bool ok = true;
-  unsigned total = (cache->size - CACHE_HEADER) / RECORD;
+  unsigned record = record_size(), total = (cache->size - CACHE_HEADER) / record;
   for (unsigned i = 0; i < XZ_EMOTIONS && ok; i++) {
     if (!installed.icons[i].data)
       continue;
+    if (owners[i] != i) {
+      h.lists[i] = h.lists[owners[i]];
+      continue;
+    }
     unsigned quota = total - s.next - (--left), first = s.next;
     if (quota > 12)
       quota = 12;
-    ok = xz_theme_decode_image(installed.icons[i], quota, write_frame, &s) && s.next > first;
+    ok = (cache_edge == 64 ? xz_theme_decode_png(installed.icons[i], 64, write_frame, &s)
+                          : xz_theme_decode_image(installed.icons[i], quota, write_frame, &s)) &&
+         s.next > first;
     h.lists[i] = (frames_t){first, s.next - first};
     vTaskDelay(1);
   }
@@ -171,10 +214,10 @@ static bool bake_cache(uint32_t crc) {
   h.count = s.next;
   const void *ptr;
   esp_partition_mmap_handle_t test;
-  if (esp_partition_mmap(cache, CACHE_HEADER, h.count * RECORD, ESP_PARTITION_MMAP_DATA, &ptr,
+  if (esp_partition_mmap(cache, CACHE_HEADER, h.count * record, ESP_PARTITION_MMAP_DATA, &ptr,
                          &test) != ESP_OK)
     return false;
-  h.frame_crc = esp_rom_crc32_le(0, ptr, h.count * RECORD);
+  h.frame_crc = esp_rom_crc32_le(0, ptr, h.count * record);
   esp_partition_munmap(test);
   return esp_partition_write(cache, 0, &h, sizeof h) == ESP_OK && load_cache(crc);
 }
@@ -186,12 +229,13 @@ const uint8_t *xz_theme_icon(unsigned emotion, unsigned tick, unsigned *delay) {
     f = frames[0];
   if (!f.count)
     return NULL;
-  const uint8_t *p = cached + CACHE_HEADER + f.first * RECORD;
+  unsigned record = record_size();
+  const uint8_t *p = cached + CACHE_HEADER + f.first * record;
   *delay = 0;
   if (f.count > 1) {
     unsigned duration = 0;
     for (unsigned j = 0; j < f.count; j++)
-      duration += xz_u16(p + j * RECORD);
+      duration += xz_u16(p + j * record);
     if (duration) {
       tick %= duration;
       for (unsigned j = 0; j < f.count; j++) {
@@ -201,11 +245,22 @@ const uint8_t *xz_theme_icon(unsigned emotion, unsigned tick, unsigned *delay) {
           break;
         }
         tick -= d;
-        p += RECORD;
+        p += record;
       }
     }
   }
   return p + 4;
+}
+unsigned xz_theme_icon_edge(unsigned emotion, unsigned *display_edge) {
+  *display_edge = XZ_ICON_EDGE;
+  if (!ready || !cached || emotion >= XZ_EMOTIONS)
+    return XZ_ICON_EDGE;
+  if (!frames[emotion].count)
+    emotion = 0;
+  unsigned size = xz_theme_png_size(installed.icons[emotion]);
+  if (size > 64)
+    *display_edge = size < 128 ? size : 128;
+  return cache_edge;
 }
 void xz_theme_boot(void) {
   static bool done;
@@ -281,6 +336,7 @@ static bool eof_http(void *c) {
   return read_http(c, &extra, 1) == 0 && esp_http_client_is_complete_data_received(t->client);
 }
 bool xz_theme_download(const atomic_bool *stop) {
+  theme_error = "主题下载失败\n检查网络后重试";
   if (!boot_job || mapped_asset)
     return false;
   boot_job = false;
@@ -313,6 +369,10 @@ bool xz_theme_download(const atomic_bool *stop) {
       int64_t length = esp_http_client_fetch_headers(client);
       int code = esp_http_client_get_status_code(client);
       if (code == 200) {
+        if (length > assets->size) {
+          theme_error = "主题包过大\n请控制在920KiB内";
+          break;
+        }
         http_transfer_t ctx = {client, stop};
         const xz_transfer_t io = {read_http, erase_flash, write_flash, eof_http};
         ok = xz_theme_receive(&io, &ctx, length, assets->size);
@@ -326,6 +386,7 @@ bool xz_theme_download(const atomic_bool *stop) {
   }
   free(url);
   if (ok) {
+    theme_error = "主题加载失败\n图片建议128×128以内";
     size_t n;
     ok = map_pack(&installed, &mapped_asset, &asset_handle, &n);
     if (ok) {

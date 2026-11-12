@@ -155,6 +155,22 @@ static void check_device_settings(void) {
  ui_xiaozhi_key(UI_PLAY_OK,&value);settle();assert(has_text(lv_screen_active(),"对话"));
  ui_xiaozhi_close();
 }
+static void check_theme_failure_hints(void) {
+    const char *hints[]={"主题下载失败\n检查网络后重试","主题包过大\n请控制在920KiB内","主题加载失败\n图片建议128×128以内"};
+    xz_view_t v={.phase=XZ_STANDBY,.revision=1};
+    for(unsigned i=0;i<sizeof hints/sizeof hints[0];i++) {
+        strcpy(v.detail,hints[i]);v.revision++;
+        ui_xiaozhi_open(&v,&face_art);settle();
+        lv_obj_t *text=label(lv_screen_active(),hints[i]);assert(text);
+        lv_point_t size;
+        lv_text_get_size(&size,hints[i],lv_obj_get_style_text_font(text,0),0,3,196,LV_TEXT_FLAG_NONE);
+        assert(size.y<=lv_obj_get_height(text));
+        assert(has_text(lv_screen_active(),"对话"));
+        /* Idle refresh must leave the complete recovery instruction visible. */
+        for(unsigned tick=0;tick<3;tick++){v.revision++;ui_xiaozhi_update(&v,&face_art);settle();assert(has_text(lv_screen_active(),hints[i]));}
+        ui_xiaozhi_close();
+    }
+}
 int main(void){
     lv_init();lv_display_t *d=lv_display_create(240,320);lv_display_set_color_format(d,LV_COLOR_FORMAT_RGB565);
     lv_display_set_buffers(d,buffer,NULL,sizeof buffer,LV_DISPLAY_RENDER_MODE_PARTIAL);lv_display_set_flush_cb(d,flush);
@@ -165,6 +181,7 @@ int main(void){
     check_speaker_sync(16000);check_speaker_sync(24000);
     check_male_mouth();
     check_device_settings();
+    check_theme_failure_hints();
     unsigned avatar=0;lv_mem_monitor_t first,last;
     ui_xiaozhi_set_battery(12,1); v.phase=XZ_BOOT;
     ui_xiaozhi_open(&v,&face_art);settle();assert(find_face(lv_screen_active())&&!label(lv_screen_active(),"配置网络"));assert_gauge(12,1);
@@ -321,6 +338,29 @@ int main(void){
         if(cycle==0)lv_mem_monitor(&first);v.avatar=0;
     }
     lv_mem_monitor(&last);assert(first.used_cnt==last.used_cnt&&first.free_size==last.free_size);
+    // Large uploaded portraits use bounded row decoding, preserve alpha, and
+    // stay clear of the subtitle; built-in/small emoji keep their old bounds.
+    extern void native_official_large(bool);
+    lv_mem_monitor_t portrait_first={0};
+    for(unsigned cycle=0;cycle<60;cycle++) {
+        native_official_install(true);native_official_large(cycle%2==0);
+        v.avatar=2;v.phase=XZ_LISTEN;v.revision++;
+        ui_xiaozhi_open(&v,NULL);settle();
+        lv_obj_t *icon=find_face(lv_screen_active());assert(icon);
+        unsigned size=cycle%2==0?128:32;
+        assert(lv_obj_get_width(icon)==size&&lv_obj_get_height(icon)==size);
+        assert(lv_obj_get_x(icon)==(240-size)/2&&lv_obj_get_y(icon)==66+(144-size)/2);
+        assert(lv_image_get_scale_x(icon)==256&&lv_image_get_scale_y(icon)==256);
+        if(size==128)for(unsigned y=0;y<17;y++)for(unsigned x=0;x<21;x++)
+            assert((mouth_pixels[y][x]==0xf800)==(x+112>=120));
+        ui_xiaozhi_close();settle();
+        // Warm both row widths and the listening caption before checking that
+        // subsequent large/small switches retain no additional allocations.
+        lv_mem_monitor(&last);
+        if(cycle==3)portrait_first=last;
+        if(cycle>=4)assert(portrait_first.used_cnt==last.used_cnt&&portrait_first.free_size==last.free_size);
+    }
+    native_official_large(false);v.avatar=0;
     for(unsigned phase=XZ_WIFI;phase<=XZ_ERROR;phase++){
         v.phase=phase;v.revision++;strcpy(v.detail,"连接失败，请重新填写名称和密码\n192.168.4.1");
         strcpy(v.hotspot,"AI-PASSPORT-ABCD");strcpy(v.password,"12345678");strcpy(v.code,"123456");

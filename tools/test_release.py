@@ -109,6 +109,26 @@ class ReleaseValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "字体|许可"):
             release.font_license_payload(b"\xe9incomplete firmware")
 
+    def test_explicit_growth_reserve_keeps_hard_partition_bounds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            build = write_fixture(tmp)
+            app = build / "trae_card.bin"
+            original = app.read_bytes()
+            limit = 0x300000 - 192 * 1024
+            app.write_bytes(original.ljust(limit, b"\0"))
+            with self.assertRaisesRegex(RuntimeError, "余量不足"):
+                release.validate_release_inputs(build, "trae_card.bin")
+            release.validate_release_inputs(build, "trae_card.bin", 192 * 1024)
+            app.write_bytes(original.ljust(limit + 1, b"\0"))
+            with self.assertRaisesRegex(RuntimeError, "余量不足"):
+                release.validate_release_inputs(build, "trae_card.bin", 192 * 1024)
+            app.write_bytes(original.ljust(0x300001, b"\0"))
+            with self.assertRaisesRegex(RuntimeError, "超出"):
+                release.validate_release_inputs(build, "trae_card.bin", 0)
+            for reserve in (-1, 0x300001):
+                with self.assertRaisesRegex(RuntimeError, "余量无效"):
+                    release.validate_release_inputs(build, "trae_card.bin", reserve)
+
     def test_font_delivery_keeps_original_notices_and_bin_bytes(self):
         expected = (release.ROOT / "assets/fonts/FONT-LICENSES.txt").read_bytes()
         payload = release.font_license_payload(b"\xe9app" + expected + b"\x00")

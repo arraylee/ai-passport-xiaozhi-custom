@@ -46,10 +46,12 @@ static bool xz_radio_stream(void *cfg,const xz_station_t *station){
  return false;
 }
 static uint64_t ms(void){return tick;}
+static const char *xz_theme_last_error(void){return "主题加载失败\n图片建议128×128以内";}
 static void status(int p,const char *s){
  working.phase=p;
  if(p==XZ_FAREWELL){assert(!live&&link&&!strcmp(s,"拜拜"));}
  if(p==XZ_STANDBY){assert(link&&!live);parked++;if(scenario==4)assert(strstr(s,"声音"));}
+ if(p==XZ_STANDBY&&scenario==12)assert(!strcmp(s,xz_theme_last_error()));
  if(p==XZ_WAKING)wakes++;
 }
 static size_t play_farewell_prompt(void){assert(!live&&link&&working.phase==XZ_FAREWELL);prompts++;if(scenario==3)cancel=true;return scenario==4?0:11628;}
@@ -71,6 +73,7 @@ static session_end_t run_session(bool *wifi_up,xz_quiet_t *clock,unsigned *missi
  if(scenario==5)assert(clock->quiet_samples==320000);
  if(scenario==7){tick+=500;return SESSION_RENEW;}
  if(scenario==8){tick+=5000;return SESSION_AUDIO_LOST;}
+ if(scenario==12)return SESSION_THEME_FAILED;
  if(scenario>=9){retained=true;if(scenario==10)cancel=true;if(scenario==11)requested_end=true;return SESSION_RADIO;}
  if(scenario==2)return SESSION_PARK;
  if(scenario==6)requested_end=true;
@@ -84,7 +87,7 @@ class FarewellRouter(unittest.TestCase):
         source=(ROOT/'components/platform/xiaozhi/xiaozhi.c').read_text()
         enum=re.search(r'typedef enum \{ SESSION_CLOSED[^;]*;',source).group()
         main=r'''
-int main(void){for(scenario=0;scenario<12;scenario++){
+int main(void){for(scenario=0;scenario<13;scenario++){
  sessions=prompts=parked=closed=awaiting=wakes=0;cancel=requested_resume=requested_end=worker_finished=false;link=live=false;tick=0;
  if(!setjmp(exit_worker))run(NULL);
  assert(worker_finished&&closed==1&&!live&&!link&&!retained);

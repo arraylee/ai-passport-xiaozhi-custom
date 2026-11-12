@@ -148,6 +148,13 @@ def verify_archive(archive_path, build_dir=None, standalone_app=None):
             or pet_meta.get("sha256") != _digest(payload["petart.bin"])):
         raise RuntimeError("manifest petart metadata mismatch")
     standalone = manifest.get("standalone_application", {})
+    if "application_headroom" in manifest:
+        reserve = manifest["application_headroom"]
+        free = limits[2][4] - limits[2][3] - len(payload["trae_card.bin"])
+        if (not isinstance(reserve, dict) or reserve.get("free_bytes") != free
+                or type(reserve.get("minimum_bytes")) is not int
+                or not 0 <= reserve["minimum_bytes"] <= free):
+            raise RuntimeError("application headroom does not match image or declared reserve")
     matching_key = "requires_matching_shared_game_art" if shared else "requires_matching_pet_art"
     if shared and "requires_matching_pet_art" in standalone:
         raise RuntimeError("pet-free standalone app must use shared game art requirement")
@@ -200,7 +207,8 @@ def verify_archive(archive_path, build_dir=None, standalone_app=None):
 
     if build_dir is not None:
         build_dir = Path(build_dir)
-        validated = release.validate_release_inputs(build_dir, "trae_card.bin")
+        minimum = manifest.get("application_headroom", {}).get("minimum_bytes", release.APP_MIN_FREE_BYTES)
+        validated = release.validate_release_inputs(build_dir, "trae_card.bin", minimum)
         for segment in validated:
             if payload[segment.file] != segment.source.read_bytes():
                 raise RuntimeError(f"ZIP 的 {segment.file} 与 build 输入不一致")
