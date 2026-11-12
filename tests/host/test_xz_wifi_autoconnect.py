@@ -16,6 +16,7 @@ typedef struct {bool show_hidden;int scan_type;struct {struct {unsigned min,max;
 typedef void (*xz_status_fn)(int,const char *);
 typedef int esp_event_base_t;
 typedef struct {unsigned reason;uint8_t ssid[32],ssid_len;} wifi_event_sta_disconnected_t;
+typedef struct {unsigned status;} wifi_event_sta_scan_done_t;
 #define ESP_OK 0
 #define NVS_READONLY 0
 #define NVS_READWRITE 1
@@ -36,15 +37,17 @@ typedef struct {unsigned reason;uint8_t ssid[32],ssid_len;} wifi_event_sta_disco
 #define IP_EVENT 2
 #define IP_EVENT_STA_GOT_IP 1
 #define WIFI_EVENT_STA_DISCONNECTED 2
+#define WIFI_EVENT_SCAN_DONE 3
 #define ESP_LOGI(...) ((void)0)
 #define XZ_WIFI 1
 #define pdMS_TO_TICKS(x) (x)
 static atomic_bool got_ip,connect_failed,wifi_connecting,disconnect_waiting,disconnect_received,wifi_attempt_issued,stop;
 static atomic_uint disconnect_events;
 static atomic_int failure_reason;
+static atomic_int portal_scan_done;
 typedef enum { PORTAL_IDLE, PORTAL_CONNECTING, PORTAL_CONNECTED, PORTAL_FAILED } portal_state_t;
 typedef enum { PORTAL_NONE, PORTAL_AUTH, PORTAL_NOT_FOUND, PORTAL_TIMEOUT, PORTAL_SAVE_FAILED, PORTAL_UNKNOWN } portal_error_t;
-static int64_t now,connected_at,disconnect_at,second_disconnect_at;
+static int64_t now,connected_at,disconnect_at,second_disconnect_at,async_scan_at;
 static bool driver_active,commit_fail,scan_fail,namespace_missing;
 static unsigned scenario,attempts,scan_index,cleared,sets,commits,scans,disconnect_calls;
 static wifi_config_t active,legacy,driver_saved;
@@ -79,6 +82,7 @@ static int esp_wifi_connect(void){
 }
 static void vTaskDelay(unsigned ms){
  now+=ms;
+ if(async_scan_at&&now>=async_scan_at){async_scan_at=0;wifi_event_sta_scan_done_t e={0};wifi_event(NULL,WIFI_EVENT,WIFI_EVENT_SCAN_DONE,&e);}
  if(disconnect_at&&now>=disconnect_at){disconnect_at=0;wifi_event_sta_disconnected_t e={.reason=WIFI_REASON_AUTH_FAIL};wifi_event(NULL,WIFI_EVENT,WIFI_EVENT_STA_DISCONNECTED,&e);}
  if(second_disconnect_at&&now>=second_disconnect_at){second_disconnect_at=0;wifi_event_sta_disconnected_t e={.reason=3};wifi_event(NULL,WIFI_EVENT,WIFI_EVENT_STA_DISCONNECTED,&e);}
  if(driver_active&&((scenario==0||scenario==7)||(scenario==1&&active.sta.ssid[0]=='A')||(scenario==5&&now-connected_at>=5000)||(scenario==6&&active.sta.ssid[0]=='A')))
@@ -86,7 +90,7 @@ static void vTaskDelay(unsigned ms){
  if(scenario==4&&driver_active)stop=true;
 }
 static int esp_wifi_scan_start(wifi_scan_config_t *cfg,bool block){
- assert(!driver_active&&!disconnect_waiting);assert(block&&cfg->scan_time.active.max==100);scan_index=0;scans++;now+=1000;return scan_fail?1:0;
+ assert(!driver_active&&!disconnect_waiting);assert(cfg->scan_time.active.max==100);scan_index=0;scans++;if(block)now+=1000;else if(!scan_fail)async_scan_at=now+1000;return scan_fail?1:0;
 }
 static int esp_wifi_scan_get_ap_record(wifi_ap_record_t *record){
  if(scenario==3||scan_fail||scan_index>=5)return 1;
@@ -94,7 +98,7 @@ static int esp_wifi_scan_get_ap_record(wifi_ap_record_t *record){
  record->rssi=-20-scan_index*10;record->primary=1;scan_index++;return 0;
 }
 static void esp_wifi_clear_ap_list(void){cleared++;}
-static void reset(unsigned value){memset(&recent_ap,0,sizeof recent_ap);scenario=value;attempts=scan_index=cleared=scans=disconnect_calls=0;now=connected_at=disconnect_at=second_disconnect_at=0;driver_active=false;memset(&active,0,sizeof active);got_ip=connect_failed=wifi_connecting=disconnect_waiting=disconnect_received=wifi_attempt_issued=stop=false;disconnect_events=0;failure_reason=0;scan_fail=false;}
+static void reset(unsigned value){memset(&recent_ap,0,sizeof recent_ap);scenario=value;attempts=scan_index=cleared=scans=disconnect_calls=0;now=connected_at=disconnect_at=second_disconnect_at=async_scan_at=0;driver_active=false;memset(&active,0,sizeof active);got_ip=connect_failed=wifi_connecting=disconnect_waiting=disconnect_received=wifi_attempt_issued=stop=false;disconnect_events=0;failure_reason=portal_scan_done=0;scan_fail=false;}
 '''
 CASES = r'''
 int main(void){

@@ -591,7 +591,7 @@ bool app_plays_voice_busy(void) {
     xz_view_t view; xiaozhi_snapshot(&view);
     return view.phase == XZ_RADIO || view.phase == XZ_FAREWELL || view.phase == XZ_WAKING || view.phase == XZ_LISTEN || view.phase == XZ_THINK || view.phase == XZ_SPEAK ||
         view.phase == XZ_BOOT || (view.phase == XZ_WELCOME && view.output_active) ||
-        view.phase == XZ_BIND || view.phase == XZ_WIFI || view.phase == XZ_CLOUD;
+        view.phase == XZ_SETUP || view.phase == XZ_BIND || view.phase == XZ_WIFI || view.phase == XZ_CLOUD;
 }
 bool app_plays_clicker_active(void) { return atomic_load(&active) == UI_PLAY_CLICKER; }
 void app_plays_button(int index, hal_btn_event_t event) {

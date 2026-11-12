@@ -2,7 +2,15 @@
 
 适用于 AI PASSPORT ESP32-C3 / 8 MB 板卡的独立固件，沿用已经验证的默认固件硬件支持与小智交互升级。
 
-当前版本 **2.1.0-xiaozhi.25**，小智控制台上报版本 **2.1.0.25**，使用 **ESP-IDF v5.5.3** 构建。
+当前版本 **2.1.0-xiaozhi.26**，小智控制台上报版本 **2.1.0.26**，使用 **ESP-IDF v5.5.3** 构建。
+
+## .26 手机配网修订
+
+- 进入配网页后，未完成配网时保持热点开启；手机离开、关闭 Wi-Fi 或换另一台手机，不会结束配网。允许两台手机同时连接；只有一份连接请求能生效，避免互相覆盖。成功保存网络或主动退出后关闭热点，结束对话后的待机休眠仍按原设置执行。
+- 附近网络改为后台扫描，列表上方立即显示「正在扫描附近的 Wi-Fi…」。扫描期间网页和连接结果仍可响应，重开页面可复用刚扫描的列表，也能点「重新扫描」或直接手动添加隐藏网络。
+- iPhone 常用探测入口直接返回配网页，减少跳转和等待。自动弹窗仍取决于 iOS；若未弹出，保持连接卡上显示的 `AI-PASSPORT-…` 热点，在 Safari 地址栏输入 **`http://192.168.4.1`**，选 2.4 GHz 网络、输入密码并连接。看到「已连接并保存」后回到卡上继续；失败时热点保留，可修改后重试。
+- 合并镜像仍为 **5,687,560 字节（5.69 MB）**。仅将小程序只读素材区末尾未使用的 8 KiB 调整给应用，图片、字库、主题容量均保留。小程序版需安装整包；传统 USB 六段地址不变。
+- 本版已完成电脑回归、手机尺寸浏览器检查和安装器模拟；**iPhone 自动弹窗、实际热点重连及长时间等待尚待实机验收**。测试包不代表社区已更新。
 
 ## .25 主题安装失败提示
 
@@ -53,7 +61,7 @@
 用于 [FoloToy 小程序玩法安装器](https://github.com/FoloToy/ai-passport-miniapp-installer/blob/main/README.zh_CN.md)的文件是以 `-miniapp.bin` 结尾的合并固件，**5,687,560 字节（5.69 MB）**。保留小智对话、语音调节、官方主题、多语言字库、开机音乐和两个动态形象。人物帧无损压缩，显示时按四行解开；官方主题包空间仍为 920 KiB。为给常驻安装器留空间，自传相册/头像的 JPEG 上限改为每张 28 KiB，自传音频分区为 80 KiB。这些限制不作用于小智对话语音。
 
 1. 通过微信小程序安装时，卡上需已有**协议 4** 的小程序玩法安装器。首次安装或从旧协议升级，请先按[官方说明](https://github.com/FoloToy/ai-passport-miniapp-installer/blob/main/docs/development/engineering/ble-recovery-compatibility.zh_CN.md)通过 USB 刷入安装器的**首刷整包**。此操作会清除原玩法和配置。小智的 BIN 不含常驻安装器。
-2. 在安装模式下，从 AI Passport 微信小程序的「设备」页连接卡，首次配置 2.4 GHz Wi-Fi。待玩法 72 上架此版本后，在社区打开「小智 AI 对话机器人」，确认显示 **.25**，点「安装到设备」，保持供电和联网直到重启。以后关机后同时按开机键和上键，可重新进入安装模式。本地生成安装包不代表社区已发布。
+2. 在安装模式下，从 AI Passport 微信小程序的「设备」页连接卡，首次配置 2.4 GHz Wi-Fi。待玩法 72 上架此版本后，在社区打开「小智 AI 对话机器人」，确认显示 **.26**，点「安装到设备」，保持供电和联网直到重启。以后关机后同时按开机键和上键，可重新进入安装模式。本地生成安装包不代表社区已发布。
 3. 小智会优先尝试已有的可用网络，也可在菜单「重新配网」。通过小程序换装会重置小智本地设置；若屏幕显示激活码，请按提示绑定，音量、形象或自定义主题需要重新选择。此包不用于旧版 USB 保留配置升级。
 
 ## 使用体验
@@ -139,13 +147,13 @@ python tools/verify_release.py releases/<生成的ZIP> --build-dir build
 python scripts/package_firmware.py --output output/delivery --min-usb-free-bytes 196608
 ```
 
-此命令复用已构建的 BIN，不重新编译。它核对两个版本号、ESP 镜像、分区地址、配套资源、ZIP 内容和校验值。`.25` 的 USB 应用分区实际剩余 214,720 字节；本版显式采用 192 KiB 的 Flash 增长预留，数值写入包内清单，未改变分区或实机验证过的镜像。发布工具默认的 256 KiB 预留仍保留，后续版本应按实际构建重新评估。
+此命令复用已构建的 BIN，不重新编译。它核对两个版本号、ESP 镜像、分区地址、配套资源、ZIP 内容和校验值。本版显式采用 192 KiB 的 USB 应用 Flash 增长预留，实际余量写入包内清单；发布工具默认的 256 KiB 预留仍保留。小程序版另按自身分区逐段检查，不沿用 USB 版的容量数值。
 
 构建小程序版本时使用单独目录与配置，避免改写传统 USB 布局：
 
 ```sh
 idf.py -B build-miniapp -DSDKCONFIG="$PWD/build-miniapp/sdkconfig" -DPASSPORT_MINIAPP=ON build
-python tools/pack_miniapp.py --build-dir build-miniapp --output releases/AI-PASSPORT-Xiaozhi-2.1.0-xiaozhi.22-miniapp.bin
+python tools/pack_miniapp.py --build-dir build-miniapp --output releases/AI-PASSPORT-Xiaozhi-2.1.0-xiaozhi.26-miniapp.bin
 ```
 
 安装兼容测试使用上游协议 4 的真实分区与流式写入代码，见 `tests/miniapp_recovery/run.py --help`。测试替代的是无线、Flash 和硬件验镜像接口，不是微信客户端或卡上的实测。小程序版本使用的启动钩子来自 [FoloToy 安装器 127c56b](https://github.com/FoloToy/ai-passport-miniapp-installer/tree/127c56bc97b7ea85bf4bfd2b52ce4e2d80a30566/bootloader_components/recovery_boot_hook)，原 MIT 许可随源码保留。

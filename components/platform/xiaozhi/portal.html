@@ -23,11 +23,13 @@ dialog[open]{display:flex;align-items:center;justify-content:center}dialog::back
 .tabs{display:flex;gap:4px;padding:4px;background:#1e2b24;border-radius:14px}.tabs button{margin:0;border:0;background:transparent;color:#b9c6bb;font-size:16px}.tabs button[aria-pressed=true]{background:#bad58c;color:#162018}
 #manual-form{margin:18px 0;padding:18px;background:#18231d;border-radius:16px;border:1px solid #415747}.tools{display:flex;align-items:center;justify-content:space-between}.tools label,.tools button{width:auto;font-size:15px;font-weight:400}.tools button{margin:0;border:0;background:transparent;color:#d8eab9}.tools input{vertical-align:middle;min-height:0;width:18px;height:18px;margin:0 6px 0 0}.network-name,#ssid{white-space:pre-wrap}
 header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #304237;padding:4px 0 15px;color:#d5e2d5;font:600 15px/1.3 system-ui}.identity{display:flex;align-items:center;gap:9px}.signal{border-radius:8px;background:#293a28;color:#bad58c;display:grid;place-items:center;width:28px;height:28px}.band{font-size:12px;letter-spacing:.04em;color:#b8c6bd}h1{font-size:30px;letter-spacing:-.04em;margin:22px 0 15px}.tabs button{background:transparent}.tabs button[aria-pressed=true]{background:#344732;color:#dcecce}.tools button{padding:6px}.tools{margin:3px 0}#manual-name+small{margin-bottom:16px;font-size:14px}
+#scan-progress{display:flex;gap:13px;align-items:center;margin-top:18px;padding:17px;background:#1e2b24;border:1px solid #415747;border-radius:14px;color:#dcecce}#scan-progress strong{font-size:17px;font-weight:600}#scan-progress small{margin-top:3px}.spinner{flex:0 0 23px;height:23px;border:3px solid #415747;border-top-color:#bad58c;border-radius:50%;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.spinner{animation:none}}
 </style>
 <header><span class="identity"><span class="signal" aria-hidden="true">◉</span>AI Passport</span><span class="band">2.4 GHz</span></header>
 <h1>连接 Wi-Fi</h1>
 <div class="tabs" role="group" aria-label="添加网络方式"><button id="near" type="button" aria-pressed="true">附近网络</button><button id="manual" type="button" aria-pressed="false">手动添加网络</button></div>
 <section id="near-panel">
+<div id="scan-progress" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><span><strong>正在扫描附近的 Wi-Fi…</strong><small>请稍候，通常需要几秒。</small></span></div>
 <fieldset id="networks" aria-describedby="r" disabled><legend>Wi-Fi 网络</legend><div id="choices" aria-busy="true"></div></fieldset>
 <button id="scan" class="secondary" type="button">重新扫描</button>
 <button id="resume" type="button" hidden>查看所选网络</button>
@@ -39,7 +41,7 @@ header{display:flex;justify-content:space-between;align-items:center;border-bott
 <button id="manual-connect" type="submit">连接网络</button></form>
 <button type="button" id="manual-check" class="secondary" hidden>检查连接结果</button>
 <p id="r" role="status" aria-live="polite"></p>
-<small>密码只保存在这台设备上。连接成功后，请查看设备屏幕，完成小智绑定和智能体设置。</small>
+<small>配网期间热点保持开启，可重新连接或换手机继续；连接成功后热点会关闭。密码只保存在这台设备上。</small>
 <dialog id="prompt" aria-labelledby="title" aria-describedby="ssid hint">
 <div class="sheet">
 <h2 id="title">连接 Wi-Fi</h2><p id="ssid"></p>
@@ -73,6 +75,7 @@ function selection(){
  for(const choice of networkChoices){const on=choice.id===selectedId;choice.button.classList.toggle('selected',on);choice.button.setAttribute('aria-pressed',String(on));choice.button.disabled=locked;}
  passwordField.hidden=!n||!n.secure;password.disabled=locked||!n||!n.secure;password.required=!!n&&n.secure;
  networkField.disabled=locked||!networks.length;networkList.setAttribute('aria-busy',String(scanning));scan.disabled=locked;connect.disabled=locked||!n;
+ byId('scan-progress').hidden=!scanning;scan.textContent=scanning?'正在扫描…':'重新扫描';
  resume.hidden=!n||prompt.open;check.hidden=!uncertain;check.disabled=false;
  near.disabled=manual.disabled=attempt||connected;
  nameInput.disabled=openNet.disabled=byId('manual-connect').disabled=attempt||connected;
@@ -97,10 +100,14 @@ async function request(url,options={}){
  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),8000);
  try{return await fetch(url,{...options,cache:'no-store',signal:controller.signal});}finally{clearTimeout(timeout);}
 }
-async function refresh(){
- if(scanning||attempt||connected)return;scanning=true;const token=++generation;selection();message('正在扫描附近的 2.4G Wi-Fi…');
+async function refresh(force=true){
+ if(scanning||attempt||connected)return;scanning=true;const token=++generation,began=Date.now();selection();message('');
  try{
-  const response=await request('/networks');if(!response.ok)throw Error('scan');const data=await response.json();if(token!==generation)return;
+  let data;
+  do{
+   const response=await request(force?'/networks?refresh=1':'/networks');force=false;if(!response.ok)throw Error('scan');data=await response.json();if(token!==generation)return;
+   if(data.scanning){if(Date.now()-began>=12000)throw Error('timeout');await new Promise(resolve=>setTimeout(resolve,350));if(token!==generation)return;}
+  }while(data.scanning);
   if(!Array.isArray(data.networks))throw Error('networks');networks=data.networks.filter(n=>n&&typeof n.id==='string'&&typeof n.ssid==='string'&&typeof n.secure==='boolean');
   if(!selected()){selectedId='';password.value='';}showNetworks();if(!hand)message(networks.length?'请点选一个 Wi-Fi 网络。':'未找到 2.4G Wi-Fi，请靠近路由器后重新扫描。');
  }catch(e){if(token===generation&&!hand)message('扫描失败，请确认手机仍连接设备热点，再点“重新扫描”。');}
@@ -117,7 +124,7 @@ async function poll(token){
  try{
   const response=await request('/wifi/status');if(!response.ok)throw Error('status');const data=await response.json();if(token!==generation)return;
   if(!['idle','connecting','connected','failed'].includes(data.state))throw Error('state');failures=0;
-  if(data.state==='connected'){attempt=false;connected=true;uncertain=false;message('Wi-Fi 已连接并保存。请查看设备屏幕，完成小智绑定和智能体设置。');selection();return;}
+  if(data.state==='connected'){attempt=false;connected=true;uncertain=false;message('Wi-Fi 已连接并保存，设备热点即将关闭。请查看设备屏幕，完成小智绑定和智能体设置。');selection();return;}
   if(data.state==='failed'){finishFailure(data.error);return;}
   if(data.state==='idle'){attempt=false;uncertain=false;message('设备当前没有进行连接，请点“连接网络”重试。');selection();return;}
   uncertain=false;message('设备正在连接 Wi-Fi，请稍候…');
@@ -125,7 +132,7 @@ async function poll(token){
  if(Date.now()-started>=60000){unknownResult();return;}
  selection();pollTimer=setTimeout(()=>poll(token),1000);
 }
-check.onclick=()=>{clearTimeout(pollTimer);failures=0;started=Date.now();return poll(generation);};scan.onclick=refresh;
+check.onclick=()=>{clearTimeout(pollTimer);failures=0;started=Date.now();return poll(generation);};scan.onclick=()=>refresh(true);
 byId('manual-check').onclick=check.onclick;
 form.onsubmit=manualForm.onsubmit=async(e)=>{
  e.preventDefault();if((!hand&&scanning)||attempt||connected)return;const n=hand?{ssid:nameInput.value,secure:!openNet.checked}:selected();if(!n)return;
@@ -145,5 +152,5 @@ form.onsubmit=manualForm.onsubmit=async(e)=>{
 };
 function viewport(){const v=window.visualViewport;if(!v)return;prompt.style.setProperty('--view-top',v.offsetTop+'px');prompt.style.setProperty('--view-height',v.height+'px');}
 if(window.visualViewport){window.visualViewport.addEventListener('resize',viewport);window.visualViewport.addEventListener('scroll',viewport);}window.addEventListener('resize',viewport);viewport();
-refresh();
+refresh(false);
 </script></html>

@@ -13,15 +13,32 @@ class Element {
 const evil='Home <img src=x onerror=alert(1)> & 家';
 const choices=[{id:'486f6d65',ssid:evil,secure:true},{id:'4775657374',ssid:'Guest',secure:false}];
 const tick=async()=>{for(let i=0;i<20;i++)await Promise.resolve();};
-async function page(){
+async function page({pending=0}={}){
  const elements={};for(const m of html.matchAll(/id="([^"]+)"/g))elements[m[1]]=new Element();
  let scans=choices,scanMode='ok',post=202,statuses=[{state:'connecting',error:'none'}],posts=[],calls=[],timers=[],now=0;
- const fetch=async(url,options={})=>{calls.push(url);if(url==='/networks'){if(scanMode==='offline')throw Error('offline');return {ok:scanMode!=='http',json:async()=>({networks:scans})};}if(url==='/wifi'){posts.push(JSON.parse(options.body));if(post==='offline')throw Error('offline');return {ok:post===202,status:post,json:async()=>({})};}assert.equal(url,'/wifi/status');const s=statuses.length>1?statuses.shift():statuses[0];if(s==='offline')throw Error('offline');return {ok:true,json:async()=>s};};
+ const fetch=async(url,options={})=>{calls.push(url);if(url==='/networks'||url==='/networks?refresh=1'){if(scanMode==='offline')throw Error('offline');const waiting=pending-->0||scanMode==='pending';return {ok:scanMode!=='http',status:waiting?202:200,json:async()=>waiting?{scanning:true}:{networks:scans}};}if(url==='/wifi'){posts.push(JSON.parse(options.body));if(post==='offline')throw Error('offline');return {ok:post===202,status:post,json:async()=>({})};}assert.equal(url,'/wifi/status');const s=statuses.length>1?statuses.shift():statuses[0];if(s==='offline')throw Error('offline');return {ok:true,json:async()=>s};};
  const context={document:{getElementById:id=>elements[id],createElement:t=>new Element(t),documentElement:new Element(),activeElement:null},window:{addEventListener(){}},fetch,TextEncoder,AbortController,Date:{now:()=>now},setTimeout:(f,ms)=>{const t={f,ms};timers.push(t);return t;},clearTimeout:t=>{timers=timers.filter(x=>x!==t);},requestAnimationFrame:f=>f()};
  vm.createContext(context);vm.runInContext(script,context);await tick();
  return {e:elements,c:context,posts,calls,setScans:v=>{scans=v;},setScan:v=>{scanMode=v;},setPost:v=>{post=v;},setStatus:v=>{statuses=v;},choose:i=>{const row=elements.choices.children[i];if(row.onclick)return row.onclick();const input=row.children[0];input.checked=true;return input.onchange();},submit:()=>elements.f.onsubmit({preventDefault(){}}),next:async()=>{const i=timers.findIndex(t=>t.ms<=1500);assert(i>=0,'Expected another status poll');const t=timers.splice(i,1)[0];now+=t.ms;t.f();await tick();}};
 }
 (async()=>{
+ const waiting=await page({pending:2});
+ assert(!waiting.e['scan-progress'].hidden&&waiting.e.scan.disabled);
+ assert(waiting.e.scan.textContent.includes('正在扫描'));assert.equal(waiting.e.choices.children.length,0);
+ await waiting.next();assert(!waiting.e['scan-progress'].hidden);await waiting.next();
+ assert(waiting.e['scan-progress'].hidden&&!waiting.e.scan.disabled&&waiting.e.choices.children.length===2);
+ assert.deepEqual(waiting.calls,['/networks','/networks','/networks'],'First visit and polls can reuse the shared device scan');
+ waiting.setScan('pending');const refresh=waiting.e.scan.onclick();await tick();
+ assert.equal(waiting.calls.at(-1),'/networks?refresh=1');assert(!waiting.e['scan-progress'].hidden);
+ await waiting.next();assert.equal(waiting.calls.at(-1),'/networks');waiting.setScan('ok');await waiting.next();await refresh;
+ assert(waiting.e['scan-progress'].hidden&&!waiting.e.scan.disabled);
+ const stalled=await page({pending:100});for(let i=0;i<35;i++)await stalled.next();
+ assert(stalled.e['scan-progress'].hidden&&!stalled.e.scan.disabled&&stalled.e.r.textContent.includes('扫描失败'));
+ const interrupted=await page({pending:5});interrupted.e.manual.onclick();
+ interrupted.e['manual-name'].value='Hidden';interrupted.e['manual-pass'].value='password';interrupted.setStatus([{state:'connected',error:'none'}]);
+ await interrupted.submit();const result=interrupted.e.r.textContent;await interrupted.next();
+ assert(result.includes('已连接并保存')&&interrupted.e.r.textContent===result,'Stale scan cannot overwrite a manual connection result');
+ assert(interrupted.e['scan-progress'].hidden&&interrupted.e.choices.children.length===0);
  const manual=await page(),m=manual.e;
  manual.setScans([]);await m.scan.onclick();m.manual.onclick();
  assert.equal(m['manual-form'].hidden,false);assert.equal(m['near-panel'].hidden,true);
@@ -48,5 +65,5 @@ async function page(){
  const invalid=await page();invalid.choose(0);invalid.e.p.value='password';invalid.setPost(400);await invalid.submit();assert(!invalid.e.connect.disabled);assert(invalid.e.r.textContent.includes('格式'));assert.equal(invalid.e.p.value,'password');
  const scan=await page();scan.choose(0);scan.e.p.value='retain me';scan.e.cancel.onclick();scan.setScans([choices[1],choices[0]]);await scan.c.refresh();assert.equal(scan.e.p.value,'retain me');assert(scan.e.choices.children[1].className.includes('selected'));scan.setScan('offline');await scan.c.refresh();assert.equal(scan.e.choices.children.length,2);assert(!scan.e.scan.disabled);scan.setScan('ok');scan.setScans([]);await scan.c.refresh();assert.equal(scan.e.choices.children.length,0);assert(scan.e.resume.hidden&&scan.e.p.value==='');
  for(const error of ['timeout','unknown']){const fail=await page();fail.choose(0);fail.e.p.value='password';fail.setStatus([{state:'failed',error}]);await fail.submit();assert(!fail.e.connect.disabled);assert(!fail.e.r.textContent.includes('已连接并保存'));}
- console.log('portal behavior PASS: modal/focus, UTF-8, open/secure, accepted/status/failure/retry, lost handoff, scans, preserved input');
+ console.log('portal behavior PASS: async scan progress/cache/timeout/manual interruption, modal/focus, UTF-8, open/secure, accepted/status/failure/retry, lost handoff, preserved input');
 })().catch(e=>{console.error(e);process.exit(1);});

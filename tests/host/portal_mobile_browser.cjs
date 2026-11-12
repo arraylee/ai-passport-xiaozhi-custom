@@ -5,18 +5,24 @@ const root=path.resolve(__dirname,'../..'),out=process.env.PORTAL_SCREENSHOTS||p
 const html=fs.readFileSync(path.join(root,'components/platform/xiaozhi/portal.html'));
 const compressed=process.env.PORTAL_GZIP?fs.readFileSync(process.env.PORTAL_GZIP):require('zlib').gzipSync(html);
 assert(require('zlib').gunzipSync(compressed).equals(html),'Built portal differs from source');
-let state={state:'connecting',error:'none'},posts=[],statusMode='ok',scanCount=0,postStatus=202;
+let state={state:'connecting',error:'none'},posts=[],statusMode='ok',scanCount=0,postStatus=202,scanPending=false;
 const malicious='家 <img src=x onerror=window.SSID_INJECTED=true> & " Wi-Fi';
 const networks=Array.from({length:12},(_,i)=>({id:Buffer.from('Network '+i).toString('hex'),ssid:i===11?malicious:'附近的 Wi-Fi '+(i+1),secure:i!==10}));
-const server=http.createServer(async(req,res)=>{res.setHeader('Cache-Control','no-store');res.setHeader('Content-Type','application/json');if(req.url==='/networks'){scanCount++;res.end(JSON.stringify({networks}));}else if(req.url==='/wifi/status'){if(statusMode==='drop'){req.socket.destroy();return;}res.end(JSON.stringify(state));}else if(req.url==='/wifi'){let body='';for await(const c of req)body+=c;posts.push(JSON.parse(body));res.statusCode=postStatus;res.end('{}');}else{res.setHeader('Content-Type','text/html');res.setHeader('Content-Encoding','gzip');res.end(compressed);}});
+const server=http.createServer(async(req,res)=>{res.setHeader('Cache-Control','no-store');res.setHeader('Content-Type','application/json');if(req.url==='/networks'||req.url==='/networks?refresh=1'){scanCount++;res.statusCode=scanPending?202:200;res.end(JSON.stringify(scanPending?{scanning:true}:{networks}));}else if(req.url==='/wifi/status'){if(statusMode==='drop'){req.socket.destroy();return;}res.end(JSON.stringify(state));}else if(req.url==='/wifi'){let body='';for await(const c of req)body+=c;posts.push(JSON.parse(body));res.statusCode=postStatus;res.end('{}');}else{res.setHeader('Content-Type','text/html');res.setHeader('Content-Encoding','gzip');res.end(compressed);}});
 (async()=>{
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const url='http://127.0.0.1:'+server.address().port;
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_EXECUTABLE||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',args:['--no-first-run','--no-default-browser-check']});
- const evidence=[];
+ fs.mkdirSync(out,{recursive:true});const evidence=[];
  try{
   for(const size of [{width:320,height:568},{width:375,height:667},{width:390,height:844}]){
    const context=await browser.newContext({viewport:size,isMobile:true,hasTouch:true,deviceScaleFactor:1});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(String(e)));
-   await page.goto(url);await page.locator('.network').nth(11).click();await page.waitForFunction(()=>document.getElementById('prompt').open);
+   scanPending=true;await page.goto(url);await page.locator('#scan-progress').waitFor({state:'visible'});
+   const progress=await page.locator('#scan-progress').boundingBox();assert(progress&&progress.y>=0&&progress.y+progress.height<=size.height,'Scan feedback is visible without scrolling');
+   assert(await page.locator('#scan').isDisabled());
+   await page.screenshot({path:path.join(out,`portal-scanning-${size.width}x${size.height}.png`)});
+   scanPending=false;await page.locator('#scan-progress').waitFor({state:'hidden'});
+   await page.screenshot({path:path.join(out,`portal-networks-${size.width}x${size.height}.png`)});
+   await page.locator('.network').nth(11).click();await page.waitForFunction(()=>document.getElementById('prompt').open);
    const geometry=await page.evaluate(()=>{const p=document.getElementById('p'),b=document.getElementById('connect'),s=document.querySelector('.sheet');return {password:p.getBoundingClientRect().toJSON(),connect:b.getBoundingClientRect().toJSON(),sheet:s.getBoundingClientRect().toJSON(),focused:document.activeElement===p,ssid:document.getElementById('ssid').textContent,markup:!!document.getElementById('ssid').querySelector('img'),font:getComputedStyle(p).fontSize,width:document.documentElement.scrollWidth};});
    assert(geometry.focused);assert.equal(geometry.ssid,malicious);assert(!geometry.markup);assert.equal(await page.evaluate(()=>window.SSID_INJECTED),undefined);assert(parseFloat(geometry.font)>=16);assert(geometry.password.y>=0&&geometry.password.bottom<=size.height);assert(geometry.connect.bottom<=size.height);assert(geometry.connect.height>=44);assert(geometry.width<=size.width);
    const shot=path.join(out,`portal-mobile-${size.width}x${size.height}.png`);await page.screenshot({path:shot});evidence.push({viewport:size,...geometry,screenshot:shot});

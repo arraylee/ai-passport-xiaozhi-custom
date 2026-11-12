@@ -119,7 +119,7 @@ def validate_pack(data, catalog=None):
         if not isinstance(catalog, dict) or not isinstance(catalog.get("sprites"), list):
             raise ValueError("invalid catalog structure")
         if (catalog.get('format') != 'PTP1' or catalog.get('version') != 1 or
-                (catalog.get('offset'), catalog.get('capacity')) not in ((0x500000, CAPACITY), (0x500000, 0xe9000), (0x2dc000, 0xdd000)) or len(data) > catalog['capacity'] or
+                (catalog.get('offset'), catalog.get('capacity')) not in ((0x500000, CAPACITY), (0x500000, 0xe9000), (0x2dc000, 0xdd000), (0x2de000, 0xdd000)) or len(data) > catalog['capacity'] or
                 catalog.get('bytes') != len(data) or catalog.get('count') != count or
                 catalog.get('sha256') != hashlib.sha256(data).hexdigest() or
                 len(catalog.get('sprites', [])) != count):
@@ -217,7 +217,7 @@ def main():
     # Exact-length pack: only its sector-rounded extent is erased/written.
     if len(raw) > args.size: parser.error('font/sprites exceed the readonly partition')
     if args.size == 0xdd000:
-        catalog['offset'] = 0x2dc000
+        catalog['offset'] = 0x2de000
     catalog['capacity'] = args.size
     args.output.write_bytes(raw)
     args.catalog_output.write_text(json.dumps(catalog, indent=2, sort_keys=True)+'\n')

@@ -2,9 +2,10 @@
 # Name,   Type, SubType, Offset, Size
 nvs,         data,nvs,     0x9000,  0x6000
 phy_init,    data,phy,     0xf000,  0x1000
-factory,     app, factory, 0x10000, 0x2cc000
-petart,      data,0x40,    0x2dc000,0xdd000
-companion,   data,0x41,    0x3b9000,0x194000
+# Reclaim 8 KiB of unused companion tail padding for the application; payloads unchanged.
+factory,     app, factory, 0x10000, 0x2ce000
+petart,      data,0x40,    0x2de000,0xdd000
+companion,   data,0x41,    0x3bb000,0x192000
 imgava,      data,spiffs,  0x54d000,0x20000
 assets,      data,spiffs,  0x56d000,0xe6000
 theme_cache, data,0x42,    0x653000,0x17000

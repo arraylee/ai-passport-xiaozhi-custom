@@ -42,6 +42,7 @@ static atomic_bool got_ip, credentials_ready, wifi_connecting, connect_failed;
 static atomic_bool disconnect_waiting, disconnect_received, wifi_attempt_issued;
 static atomic_uint disconnect_events;
 static atomic_int failure_reason;
+static atomic_int portal_scan_done;
 typedef enum { PORTAL_IDLE, PORTAL_CONNECTING, PORTAL_CONNECTED, PORTAL_FAILED } portal_state_t;
 typedef enum { PORTAL_NONE, PORTAL_AUTH, PORTAL_NOT_FOUND, PORTAL_TIMEOUT,
                PORTAL_SAVE_FAILED, PORTAL_UNKNOWN } portal_error_t;
@@ -106,6 +107,10 @@ static bool wifi_current_link(void) {
 }
 static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
   (void)arg;
+  if (base == WIFI_EVENT && id == WIFI_EVENT_SCAN_DONE) {
+    const wifi_event_sta_scan_done_t *event = data;
+    atomic_store(&portal_scan_done, event && !event->status ? 1 : -1);
+  }
   if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
     if (atomic_load(&wifi_connecting) && !atomic_load(&disconnect_waiting) &&
         wifi_current_link()) {
@@ -169,6 +174,7 @@ void xz_identity(char mac[18], char uuid[37]) {
 }
 extern const char portal[] asm("_binary_portal_html_gz_start"), portal_end[] asm("_binary_portal_html_gz_end");
 static esp_err_t portal_get(httpd_req_t *r) {
+  (void)xz_portal_accept_input();
   httpd_resp_set_hdr(r, "Cache-Control", "no-store");
   httpd_resp_set_type(r, "text/html; charset=utf-8");
   httpd_resp_set_hdr(r, "Content-Encoding", "gzip");
@@ -176,12 +182,68 @@ static esp_err_t portal_get(httpd_req_t *r) {
 }
 static esp_err_t portal_redirect(httpd_req_t *r, httpd_err_code_t error) {
   (void)error;
+  (void)xz_portal_accept_input();
   // Android/iOS probes use several paths; iOS also needs a nonempty body.
   httpd_resp_set_status(r, "303 See Other");
   httpd_resp_set_hdr(r, "Location", "http://192.168.4.1/");
   httpd_resp_set_hdr(r, "Cache-Control", "no-store");
   httpd_resp_set_type(r, "text/html; charset=utf-8");
   return httpd_resp_sendstr(r, "<a href='http://192.168.4.1/'>AI PASSPORT Wi-Fi</a>");
+}
+enum { SCAN_IDLE, SCAN_REQUESTED, SCAN_RUNNING, SCAN_READY, SCAN_FAILED };
+typedef struct {
+  unsigned state;
+  size_t count;
+  int64_t deadline, ready_at;
+  xz_wifi_option_t options[XZ_WIFI_OPTION_MAX];
+} portal_scan_t;
+// Exists only during provisioning; release it before voice/TLS starts.
+static portal_scan_t *portal_scan;
+static void portal_scan_release(void) {
+  if (!portal_scan) return;
+  if (portal_scan->state == SCAN_RUNNING) (void)esp_wifi_scan_stop();
+  esp_wifi_clear_ap_list();
+  free(portal_scan);
+  portal_scan = NULL;
+  atomic_store(&portal_scan_done, 0);
+}
+static void portal_scan_poll(void) {
+  if (!portal_scan || xSemaphoreTake(credential_guard, 0) != pdTRUE) return;
+  portal_scan_t *s = portal_scan;
+  int64_t now = esp_timer_get_time() / 1000;
+  if (atomic_load(&credentials_ready)) {
+    if (s->state == SCAN_RUNNING) (void)esp_wifi_scan_stop();
+    esp_wifi_clear_ap_list();
+    s->state = SCAN_IDLE;
+    atomic_store(&portal_scan_done, 0);
+  } else if (s->state == SCAN_REQUESTED) {
+    wifi_scan_config_t cfg = {.show_hidden=false, .scan_type=WIFI_SCAN_TYPE_ACTIVE,
+                             .scan_time.active={.min=50,.max=100}};
+    atomic_store(&portal_scan_done, 0);
+    s->deadline = now + 5000;
+    s->state = esp_wifi_scan_start(&cfg, false) == ESP_OK ? SCAN_RUNNING : SCAN_FAILED;
+    if (s->state == SCAN_FAILED) esp_wifi_clear_ap_list();
+  } else if (s->state == SCAN_RUNNING) {
+    int done = atomic_load(&portal_scan_done);
+    if (done > 0) {
+      s->count = 0;
+      for (unsigned i=0; i<128; i++) {
+        wifi_ap_record_t record;
+        if (esp_wifi_scan_get_ap_record(&record) != ESP_OK) break;
+        s->count = xz_wifi_option_add(s->options, s->count, record.ssid,
+            strnlen((char *)record.ssid,32), record.rssi,
+            record.authmode!=WIFI_AUTH_OPEN && record.authmode!=WIFI_AUTH_OWE, record.primary);
+      }
+      esp_wifi_clear_ap_list();
+      s->state = SCAN_READY;
+      s->ready_at = now;
+    } else if (done < 0 || now >= s->deadline) {
+      (void)esp_wifi_scan_stop();
+      esp_wifi_clear_ap_list();
+      s->state = SCAN_FAILED;
+    }
+  }
+  xSemaphoreGive(credential_guard);
 }
 static esp_err_t portal_unavailable(httpd_req_t *r,const char *detail) {
   httpd_resp_set_status(r,"503 Service Unavailable");
@@ -190,7 +252,7 @@ static esp_err_t portal_unavailable(httpd_req_t *r,const char *detail) {
 }
 static esp_err_t portal_networks(httpd_req_t *r) {
   if (!xz_portal_accept_input()) return portal_unavailable(r,"sleeping");
-  if (!ap || !credential_guard ||
+  if (!ap || !portal_scan || !credential_guard ||
       xSemaphoreTake(credential_guard, 0) != pdTRUE)
     return portal_unavailable(r,"connecting");
   if (atomic_load(&wifi_connecting) || atomic_load(&credentials_ready) ||
@@ -200,27 +262,26 @@ static esp_err_t portal_networks(httpd_req_t *r) {
     xSemaphoreGive(credential_guard);
     return portal_unavailable(r,"connecting");
   }
-  wifi_scan_config_t cfg={.show_hidden=false,.scan_type=WIFI_SCAN_TYPE_ACTIVE,
-                          .scan_time.active={.min=50,.max=100}};
-  if(esp_wifi_scan_start(&cfg,true)!=ESP_OK){
-    esp_wifi_clear_ap_list();
-    xSemaphoreGive(credential_guard);
-    return portal_unavailable(r,"scan_failed");
-  }
-  xz_wifi_option_t options[XZ_WIFI_OPTION_MAX]={0};size_t count=0;
-  // Drain one record at a time instead of allocating the driver's full list.
-  for(unsigned i=0;i<128;i++){
-    wifi_ap_record_t record;
-    if(esp_wifi_scan_get_ap_record(&record)!=ESP_OK)break;
-    count=xz_wifi_option_add(options,count,record.ssid,strnlen((char *)record.ssid,32),
-       record.rssi,record.authmode!=WIFI_AUTH_OPEN&&record.authmode!=WIFI_AUTH_OWE,record.primary);
-  }
-  esp_wifi_clear_ap_list(); // Includes records beyond the bounded drain limit.
+  char query[16];
+  bool refresh = httpd_req_get_url_query_str(r, query, sizeof query) == ESP_OK &&
+                 !strcmp(query, "refresh=1");
+  portal_scan_t *s = portal_scan;
+  if (s->state == SCAN_IDLE ||
+      ((s->state == SCAN_READY || s->state == SCAN_FAILED) && refresh) ||
+      (s->state == SCAN_READY && esp_timer_get_time()/1000 - s->ready_at >= 15000))
+    s->state = SCAN_REQUESTED;
+  unsigned state = s->state;
+  xz_wifi_option_t options[XZ_WIFI_OPTION_MAX];
+  size_t count = state == SCAN_READY ? s->count : 0;
+  if (count) memcpy(options, s->options, count * sizeof *options);
   xSemaphoreGive(credential_guard);
-  ESP_LOGI("xiaozhi","wifi scan options=%u heap=%u stack_free=%u",(unsigned)count,
-           (unsigned)esp_get_free_heap_size(),(unsigned)uxTaskGetStackHighWaterMark(NULL));
+  if (state == SCAN_FAILED) return portal_unavailable(r, "scan_failed");
   httpd_resp_set_type(r,"application/json; charset=utf-8");
   httpd_resp_set_hdr(r,"Cache-Control","no-store");
+  if (state != SCAN_READY) {
+    httpd_resp_set_status(r, "202 Accepted");
+    return httpd_resp_sendstr(r, "{\"scanning\":true}");
+  }
   esp_err_t e=httpd_resp_sendstr_chunk(r,"{\"networks\":[");
   for(size_t i=0;e==ESP_OK&&i<count;i++){
     char label[33]={0},hex[65];memcpy(label,options[i].ssid,options[i].length);
@@ -620,30 +681,37 @@ bool xz_wifi_open(bool setup, atomic_bool *cancel, xz_status_fn status,
     wifi_config_t ac = {0};
     strlcpy((char *)ac.ap.ssid, hotspot, sizeof ac.ap.ssid);
     ac.ap.ssid_len = strlen(hotspot);
-    ac.ap.max_connection = 1;
+    // A phone that vanishes without disassociating must not exclude its replacement.
+    ac.ap.max_connection = 2;
     ac.ap.authmode = WIFI_AUTH_OPEN;
     ac.ap.channel = 1;
     if (esp_wifi_set_mode(WIFI_MODE_APSTA) != ESP_OK ||
         esp_wifi_set_config(WIFI_IF_AP, &ac) != ESP_OK)
       return false;
+    portal_scan = calloc(1, sizeof *portal_scan);
+    if (!portal_scan) return false;
     if (!portal_dns_start()) {
       status(XZ_ERROR, "配网页面未启动，请重试");
       return false;
     }
     httpd_config_t hc = HTTPD_DEFAULT_CONFIG();
     hc.stack_size = 4096;
-    hc.max_open_sockets = 2;
+    hc.max_open_sockets = 4;
     hc.lru_purge_enable = true;
     hc.recv_wait_timeout = 3;
     if (httpd_start(&http, &hc) != ESP_OK)
       return false;
     httpd_uri_t get = {.uri = "/", .method = HTTP_GET, .handler = portal_get},
+                apple = {.uri="/hotspot-detect.html",.method=HTTP_GET,.handler=portal_get},
+                apple_legacy = {.uri="/library/test/success.html",.method=HTTP_GET,.handler=portal_get},
                 networks = {.uri="/networks",.method=HTTP_GET,.handler=portal_networks},
                 outcome = {.uri="/wifi/status",.method=HTTP_GET,.handler=portal_status},
                 post = {.uri = "/wifi",
                         .method = HTTP_POST,
                         .handler = portal_post};
     if (httpd_register_uri_handler(http, &get) != ESP_OK ||
+        httpd_register_uri_handler(http, &apple) != ESP_OK ||
+        httpd_register_uri_handler(http, &apple_legacy) != ESP_OK ||
         httpd_register_uri_handler(http,&networks)!=ESP_OK ||
         httpd_register_uri_handler(http, &post) != ESP_OK ||
         httpd_register_uri_handler(http, &outcome) != ESP_OK ||
@@ -653,10 +721,11 @@ bool xz_wifi_open(bool setup, atomic_bool *cancel, xz_status_fn status,
   }
   int64_t attempt_deadline = 0, success_until = 0;
   bool trying = false;
-  // The device idle policy stops the worker for sleep. Merely waiting for
-  // a phone must never close an otherwise healthy setup hotspot.
+  // The setup UI blocks automatic sleep. A phone may leave and rejoin without
+  // ending provisioning; explicit exit still cancels this worker.
   while (!atomic_load(cancel)) {
     portal_dns_poll();
+    portal_scan_poll();
     if (!trying && !success_until && atomic_load(&credentials_ready) &&
         xSemaphoreTake(credential_guard, 0) == pdTRUE) {
       config = pending;
@@ -703,6 +772,7 @@ bool xz_wifi_open(bool setup, atomic_bool *cancel, xz_status_fn status,
       /* The phone gets several polls before AP/DNS/HTTP are freed for cloud TLS. */
       portal_dns_stop();
       if (http) { httpd_stop(http); http = NULL; }
+      portal_scan_release();
       if (ap) { esp_wifi_set_mode(WIFI_MODE_STA); esp_netif_destroy_default_wifi(ap); ap = NULL; }
       memset(&profiles, 0, sizeof profiles);
       return true;
@@ -740,6 +810,7 @@ void xz_wifi_close(void) {
     httpd_stop(http);
     http = NULL;
   }
+  portal_scan_release();
   if (sntp_started) {
     esp_sntp_stop();
     sntp_started = false;
