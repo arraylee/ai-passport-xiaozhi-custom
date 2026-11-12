@@ -6,7 +6,8 @@
 typedef enum { UI_XZ_NONE, UI_XZ_TALK, UI_XZ_RETRY, UI_XZ_WIFI, UI_XZ_EXIT, UI_XZ_AVATAR,
                UI_XZ_INTERRUPT, UI_XZ_INTERRUPT_MODE, UI_XZ_VOLUME, UI_XZ_RESUME,
                UI_XZ_BEGIN_SETUP, UI_XZ_BRIGHTNESS_PREVIEW, UI_XZ_BRIGHTNESS_CANCEL,
-               UI_XZ_BRIGHTNESS, UI_XZ_SLEEP, UI_XZ_RADIO_PREV, UI_XZ_RADIO_NEXT } ui_xz_action_t;
+               UI_XZ_BRIGHTNESS, UI_XZ_SLEEP, UI_XZ_RADIO_PREV, UI_XZ_RADIO_NEXT,
+               UI_XZ_RESTART_DEVICE } ui_xz_action_t;
 void ui_xiaozhi_open(const xz_view_t *view,const companion_portrait_t *portrait);
 void ui_xiaozhi_update(const xz_view_t *view,const companion_portrait_t *portrait);
 ui_xz_action_t ui_xiaozhi_key(ui_play_key_t key,unsigned *avatar);

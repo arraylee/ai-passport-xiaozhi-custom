@@ -12,7 +12,7 @@ set(EXTRA_COMPONENT_DIRS
     components/app)
 
 # 固件版本(供 release.py 命名与 esp_app_desc 使用)。发版时按需递增。
-set(PROJECT_VER "2.1.0-xiaozhi.28")
+set(PROJECT_VER "2.1.0-xiaozhi.29")
 
 option(PASSPORT_MINIAPP "Build for the FoloToy mini-program Recovery installer" OFF)
 if(PASSPORT_MINIAPP)

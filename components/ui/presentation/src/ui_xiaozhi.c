@@ -415,7 +415,7 @@ static void render(void) {
     }
     const char *action = "请稍候";
     if (X.view.restart_required)
-      action = "返回";
+      action = "重启";
     else if (X.view.phase == XZ_BIND ||
              (X.view.phase == XZ_ERROR && X.view.stage == XZ_STAGE_BIND && X.view.code[0]))
       action = "重新获取";
@@ -552,7 +552,7 @@ ui_xz_action_t ui_xiaozhi_key(ui_play_key_t key, unsigned *avatar) {
   if (X.page == CHAT && (X.view.phase == XZ_BOOT || X.view.phase == XZ_WELCOME))
     return X.view.phase == XZ_WELCOME && key == UI_PLAY_OK ? UI_XZ_BEGIN_SETUP : UI_XZ_NONE;
   if (key == UI_PLAY_BACK) {
-    if (X.page == CHAT && X.view.restart_required) return UI_XZ_EXIT;
+    if (X.page == CHAT && X.view.restart_required) return UI_XZ_NONE;
     unsigned previous = X.page;
     bool cancel_brightness = previous == BRIGHTNESS;
     unsigned menu = settings_menu();
@@ -664,7 +664,7 @@ ui_xz_action_t ui_xiaozhi_key(ui_play_key_t key, unsigned *avatar) {
     } else if (X.view.phase == XZ_BIND)
       return UI_XZ_RETRY;
     else if (X.view.phase == XZ_ERROR || X.view.phase == XZ_OFF)
-      return X.view.restart_required ? UI_XZ_EXIT : UI_XZ_RETRY;
+      return X.view.restart_required ? UI_XZ_RESTART_DEVICE : UI_XZ_RETRY;
     else if (X.view.phase == XZ_STANDBY) return UI_XZ_RESUME;
     else if (count == 3)
       return X.view.phase == XZ_SPEAK || X.view.phase == XZ_THINK ? UI_XZ_INTERRUPT : UI_XZ_TALK;

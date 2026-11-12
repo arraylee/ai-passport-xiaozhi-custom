@@ -182,7 +182,8 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/native_speaker_meter.c"
 target_sources(test_xiaozhi_ui PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/native_speaker_meter.c")
 get_target_property(xz_sources test_plays_navigation SOURCES)
 list(REMOVE_ITEM xz_sources test_plays_navigation.c)
-target_sources(test_xiaozhi_ui PRIVATE ${xz_sources} "${PRESENTATION}/src/ui_xiaozhi.c")
+target_sources(test_xiaozhi_ui PRIVATE ${xz_sources} "${PRESENTATION}/src/ui_xiaozhi.c"
+    "${PRESENTATION}/src/ui_voice_base.c")
 get_target_property(xz_includes test_plays_navigation INCLUDE_DIRECTORIES)
 target_include_directories(test_xiaozhi_ui PRIVATE ${xz_includes} "${REPO}/components/platform/xiaozhi/include")
 target_compile_options(test_xiaozhi_ui PRIVATE -UNDEBUG)

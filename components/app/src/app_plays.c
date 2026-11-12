@@ -297,7 +297,11 @@ static void button(const play_event_t *event) {
             ui_xiaozhi_update(&view, companion_avatar(view.avatar));
         }
         platform_lvgl_unlock();
-        if (action == UI_XZ_TALK) xiaozhi_talk();
+        if (action == UI_XZ_RESTART_DEVICE) {
+            xiaozhi_stop();
+            if (C.restart_device) C.restart_device(C.user);
+        }
+        else if (action == UI_XZ_TALK) xiaozhi_talk();
         else if (action == UI_XZ_RADIO_PREV || action == UI_XZ_RADIO_NEXT) xiaozhi_radio_step(action == UI_XZ_RADIO_PREV ? -1 : 1);
         else if (action == UI_XZ_BEGIN_SETUP) xiaozhi_begin_setup();
         else if (action == UI_XZ_INTERRUPT) xiaozhi_interrupt();
@@ -435,7 +439,13 @@ static void worker(void *arg) {
         sync_clicker_owner();
         if (xz_leaving && xiaozhi_stopped() && platform_lvgl_lock(100)) {
             xz_view_t view; xiaozhi_snapshot(&view);
-            if (view.restart_required && !xz_exit_fault_shown) {
+            if (C.voice_home) {
+                // A bounded serial check must stop its microphone, but must
+                // never reveal the legacy selector/profile in this edition.
+                ui_xiaozhi_update(&view, companion_avatar(view.avatar));
+                voice_check_deadline = 0; voice_check_return_home = false;
+                atomic_store(&voice_check_pending, false);
+            } else if (view.restart_required && !xz_exit_fault_shown) {
                 // Show a restore failure once before leaving. A subsequent
                 // return press remains available; the radio refuses retries.
                 xz_exit_fault_shown = true;

@@ -16,7 +16,7 @@ file(GLOB companion_avatars "${PROJECT_DIR}/assets/xiaozhi/faces/*.png")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${companion_avatars})
 # components/presentation/CMakeLists.txt
 idf_component_register(
-    SRCS "src/ui_profile.c" "src/ui_album.c" "src/ui_game.c" "src/ui_reward.c"
+    SRCS "src/ui_voice_base.c" "src/ui_album.c" "src/ui_game.c" "src/ui_reward.c"
          "src/ui_factory.c" "src/ui_selftest.c" "src/ui_button_guide.c"
          "src/ui_theme.c" "src/ui_official.c" "src/ui_boot.c" "src/ui_xiaozhi.c" "src/ui_plays.c" "src/bobo_art.c"
          "src/ui_font_body.c" "src/ui_font_title.c" "src/ui_font_answer.c"

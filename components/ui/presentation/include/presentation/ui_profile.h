@@ -3,6 +3,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+// Legacy profile ABI. The dedicated XiaoZhi build uses ui_voice_base.c instead:
+// a black base with no profile widgets/navigation; metadata setters do nothing.
+// The archived demo implementation constructs the profile described below.
 // 构建主页(头像 + 昵称/头衔/四行简介 + 玩法/相册 dock)。
 // 首页长按确定可读完整字体授权；不占用首页底部空间。
 // 对同一screen重复调用不重复创建；screen删除会清理主页时钟及附属阅读器。

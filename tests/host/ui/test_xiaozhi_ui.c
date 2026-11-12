@@ -1,4 +1,5 @@
 #include "presentation/ui_xiaozhi.h"
+#include "presentation/ui_profile.h"
 #include "presentation/ui_theme.h"
 #include "presentation/ui_xiaozhi_theme.h"
 #include <assert.h>
@@ -174,6 +175,19 @@ static void check_theme_failure_hints(void) {
 int main(void){
     lv_init();lv_display_t *d=lv_display_create(240,320);lv_display_set_color_format(d,LV_COLOR_FORMAT_RGB565);
     lv_display_set_buffers(d,buffer,NULL,sizeof buffer,LV_DISPLAY_RENDER_MODE_PARTIAL);lv_display_set_flush_cb(d,flush);
+    ui_profile_create();step(10);
+    assert(lv_obj_get_child_count(lv_screen_active())==0&&!ui_profile_is_active());
+    assert((lv_color_to_u32(lv_obj_get_style_bg_color(lv_screen_active(),0))&0xffffffu)==0);
+    assert(lv_obj_get_style_bg_opa(lv_screen_active(),0)==LV_OPA_COVER);
+    lv_mem_monitor_t base_before,base_after;lv_mem_monitor(&base_before);
+    for(unsigned i=0;i<100;i++) {
+        ui_profile_create();ui_profile_set_name("FoloToy");ui_profile_set_title("legacy");
+        ui_profile_set_intro("unused card metadata");ui_profile_set_ble_connected(i%2);
+        ui_profile_set_battery(95,5);ui_profile_show_image(&face_frames[0]);
+        ui_profile_set_on_action(NULL,NULL);assert(!ui_profile_open_licenses());step(1000);
+    }
+    lv_mem_monitor(&base_after);
+    assert(!lv_obj_get_child_count(lv_screen_active())&&base_before.free_size==base_after.free_size);
     for(unsigned f=0;f<COMPANION_FACE_COUNT;f++)face_frames[f]=(lv_image_dsc_t){
         .header={.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_RGB565A8,.w=144,.h=144,.stride=288},
         .data_size=sizeof face_pixels,.data=face_pixels};
@@ -369,14 +383,16 @@ int main(void){
     v.phase=XZ_ERROR; v.restart_required=true; v.revision++;
     strcpy(v.detail,"蓝牙暂不可用，请重启设备");
     ui_xiaozhi_open(&v,NULL);settle();
-    assert(ui_xiaozhi_key(UI_PLAY_OK,&avatar)==UI_XZ_EXIT);ui_xiaozhi_close();
+    assert(has_text(lv_screen_active(),"重启"));
+    assert(ui_xiaozhi_key(UI_PLAY_BACK,&avatar)==UI_XZ_NONE);
+    assert(ui_xiaozhi_key(UI_PLAY_OK,&avatar)==UI_XZ_RESTART_DEVICE);ui_xiaozhi_close();
     v.phase=XZ_READY;v.restart_required=false;v.revision++;
     ui_xiaozhi_open(&v,NULL);
     ui_xiaozhi_key(UI_PLAY_UP,&avatar);ui_xiaozhi_key(UI_PLAY_OK,&avatar);
     ui_xiaozhi_key(UI_PLAY_UP,&avatar);assert(ui_xiaozhi_key(UI_PLAY_OK,&avatar)==UI_XZ_NONE);
     v.phase=XZ_ERROR;v.restart_required=true;v.revision++;
     ui_xiaozhi_update(&v,NULL);settle();assert(has_text(lv_screen_active(),v.detail));
-    assert(ui_xiaozhi_key(UI_PLAY_OK,&avatar)==UI_XZ_EXIT);ui_xiaozhi_close();
+    assert(ui_xiaozhi_key(UI_PLAY_OK,&avatar)==UI_XZ_RESTART_DEVICE);ui_xiaozhi_close();
     v.phase=XZ_READY;v.restart_required=false;v.avatar=0;v.revision++;
     ui_xiaozhi_open(&v,&face_art);step(0);assert_face(COMPANION_IDLE);
     assert((has_text(lv_screen_active(),"FoloToy") && has_text(lv_screen_active(),"小智")));

@@ -984,6 +984,10 @@ static void on_plays_exit(void *user) {
     s_view_exit_ms = (uint32_t)(esp_timer_get_time() / 1000);
     s_view_nav_restore_pending = true;
 }
+static void plays_restart_device(void *user) {
+    (void)user;
+    esp_restart();
+}
 static void on_image_screen(void *screen, void *user) {
     (void)user;
     platform_lvgl_nav_enable(false);
@@ -2867,7 +2871,8 @@ void app_run(void) {
 #endif
 
 #if PERIPH_DISPLAY
-    app_plays_config_t plays_config = {.exit = on_plays_exit, .portal_activity = note_portal_activity};
+    app_plays_config_t plays_config = {.exit = on_plays_exit, .portal_activity = note_portal_activity,
+        .voice_home = PASSPORT_XIAOZHI_EDITION, .restart_device = plays_restart_device};
     plays_config.get_brightness = plays_get_brightness;
     plays_config.set_brightness = plays_set_brightness;
     plays_config.preview_brightness = plays_preview_brightness;

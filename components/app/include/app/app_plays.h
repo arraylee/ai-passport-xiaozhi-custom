@@ -22,6 +22,10 @@ typedef struct {
     void (*exit)(void *user);
     // Called under LVGL after the voice screen exists, before networking starts.
     void (*voice_opened)(void *user);
+    // Dedicated XiaoZhi firmware keeps completed diagnostics on its own page.
+    bool voice_home;
+    // Explicit user recovery from a non-recoverable device error, outside LVGL.
+    void (*restart_device)(void *user);
     void *user;
     // The Wi-Fi form calls this on a scan or submission before starting I/O.
     bool (*portal_activity)(void);
@@ -34,7 +38,8 @@ bool app_plays_active(void);
 bool app_plays_clicker_active(void);
 bool app_plays_voice_busy(void);
 // Local serial fixture: normal UI/worker startup, bounded to45seconds, then
-// stop and return home. Reject other plays, active voice, sleep and duplicates.
+// stop and return to the edition's home. Reject other plays, active voice,
+// sleep and duplicates. voice_home keeps the XiaoZhi page without auto-listening.
 bool app_plays_voice_check(void);
 // Forward the complete raw gesture (including PRESS). Follow-up events from a
 // press that started outside the current play page are deliberately consumed.

@@ -684,6 +684,40 @@ static void bounded_serial_voice_check(void) {
 static void boot_voice_opened(void *user) {
     (void)user;assert(lock_depth());assert(!fake_xz_running);voice_opened_calls++;
 }
+static unsigned explicit_restarts;
+static void restart_device(void *user) {
+    (void)user;assert(!lock_depth());explicit_restarts++;
+}
+static void dedicated_voice_home(void) {
+    reset_app();C.voice_home=true;
+    unsigned homes=home_exits;
+    assert(app_plays_voice_check());pump();fake_xz_phase=XZ_RADIO;
+    fake_ms=voice_check_deadline;pump();assert(xz_stop_requests&&xz_leaving);
+    fake_xz_running=false;fake_xz_phase=XZ_OFF;pump();
+    assert(atomic_load(&active)==UI_PLAY_XIAOZHI&&home_exits==homes&&!xz_closes);
+    assert(!voice_check_return_home&&!voice_check_deadline&&!atomic_load(&voice_check_pending));
+    steps(5);assert(!fake_xz_running); // Host disappearance never starts listening.
+    next_xz_action=UI_XZ_RETRY;key(fake_ms,2,HAL_BTN_PRESS);key(fake_ms+30,2,HAL_BTN_RELEASE);
+    assert(fake_xz_running); // Explicit on-screen retry still works.
+    fake_xz_phase=XZ_RADIO;unsigned stops=xz_stop_requests;
+    fake_ms+=180000;pump();assert(fake_xz_running&&xz_stop_requests==stops&&home_exits==homes);
+
+    reset_app();C.voice_home=true;assert(app_plays_voice_check());pump();
+    fake_xz_running=false;fake_xz_phase=XZ_OFF;pump(); // Host stop before deadline.
+    assert(atomic_load(&active)==UI_PLAY_XIAOZHI&&!voice_check_return_home&&!atomic_load(&voice_check_pending));
+
+    reset_app();C.voice_home=true;assert(app_plays_voice_check());pump();
+    assert(!app_plays_prepare_sleep());pump();fake_xz_running=false;steps(2);
+    assert(play_sleep_frozen(&sleep_gate));app_plays_cancel_sleep();pump();
+    assert(atomic_load(&active)==UI_PLAY_XIAOZHI&&!fake_xz_running&&!voice_check_return_home);
+
+    reset_app();C.voice_home=true;C.restart_device=restart_device;explicit_restarts=0;
+    assert(launch(UI_PLAY_XIAOZHI));pump();fake_xz_fault=true;
+    steps(3);assert(!explicit_restarts); // Error display alone must not reboot.
+    next_xz_action=UI_XZ_RESTART_DEVICE;
+    key(fake_ms,2,HAL_BTN_PRESS);assert(!explicit_restarts);
+    key(fake_ms+30,2,HAL_BTN_RELEASE);assert(explicit_restarts==1);
+}
 static void boot_starts_normal_voice_flow(void) {
     reset_app();platform_lvgl_lock(1);ui_plays_close();platform_lvgl_unlock();
     C.voice_opened=boot_voice_opened;voice_opened_calls=0;forced_setup=true;
@@ -741,6 +775,7 @@ int main(int argc, char **argv) {
         {"boot_starts_normal_voice_flow", boot_starts_normal_voice_flow},
         {"setup_sleeps_and_reopens", setup_sleeps_and_reopens},
         {"bounded_serial_voice_check", bounded_serial_voice_check},
+        {"dedicated_voice_home", dedicated_voice_home},
         {"voice_settings_and_button_interruption", voice_settings_and_button_interruption},
         {"voice_navigation_fires_on_press_and_release", voice_navigation_fires_on_press_and_release},
         {"idle_has_no_background_audio_or_draw", idle_has_no_background_audio_or_draw},
