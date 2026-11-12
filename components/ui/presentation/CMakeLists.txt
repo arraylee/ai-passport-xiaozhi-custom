@@ -29,3 +29,7 @@ idf_component_register(
     PRIV_INCLUDE_DIRS "${companion_dir}"
     REQUIRES services lvgl xiaozhi
     PRIV_REQUIRES esp_rom esp_partition)
+
+# Font attribution belongs to every standalone BIN, independently of the
+# removed name-card/credits UI. Keep the read-only notices without allocating UI.
+idf_build_set_property(LINK_OPTIONS "-Wl,--undefined=passport_font_notices" APPEND)
