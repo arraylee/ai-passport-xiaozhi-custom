@@ -17,6 +17,8 @@ typedef void (*xz_status_fn)(int,const char *);
 typedef int esp_event_base_t;
 typedef struct {unsigned reason;uint8_t ssid[32],ssid_len;} wifi_event_sta_disconnected_t;
 typedef struct {unsigned status;} wifi_event_sta_scan_done_t;
+typedef struct {uint8_t aid;} wifi_event_ap_staconnected_t;
+typedef struct {uint8_t aid;uint16_t reason;} wifi_event_ap_stadisconnected_t;
 #define ESP_OK 0
 #define NVS_READONLY 0
 #define NVS_READWRITE 1
@@ -38,6 +40,8 @@ typedef struct {unsigned status;} wifi_event_sta_scan_done_t;
 #define IP_EVENT_STA_GOT_IP 1
 #define WIFI_EVENT_STA_DISCONNECTED 2
 #define WIFI_EVENT_SCAN_DONE 3
+#define WIFI_EVENT_AP_STACONNECTED 4
+#define WIFI_EVENT_AP_STADISCONNECTED 5
 #define ESP_LOGI(...) ((void)0)
 #define XZ_WIFI 1
 #define pdMS_TO_TICKS(x) (x)

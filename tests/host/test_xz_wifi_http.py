@@ -17,7 +17,7 @@ typedef void *httpd_handle_t,*esp_event_handler_instance_t;
 typedef int httpd_err_code_t;
 typedef struct {int held;} *SemaphoreHandle_t;
 typedef struct {int content_len,received,code;const char *input,*query;bool gzip,no_cache,redirect,html;char response[2048];} httpd_req_t;
-typedef struct {unsigned stack_size,max_open_sockets;bool lru_purge_enable;unsigned recv_wait_timeout;} httpd_config_t;
+typedef struct {unsigned stack_size,max_open_sockets;bool lru_purge_enable;unsigned recv_wait_timeout;bool keep_alive_enable;int keep_alive_idle,keep_alive_interval,keep_alive_count;} httpd_config_t;
 typedef struct {const char *uri;int method;esp_err_t (*handler)(httpd_req_t *);} httpd_uri_t;
 typedef struct {int dynamic_rx_buf_num,static_rx_buf_num,ampdu_rx_enable,ampdu_tx_enable,rx_ba_win;} wifi_init_config_t;
 #define WIFI_INIT_CONFIG_DEFAULT() ((wifi_init_config_t){.dynamic_rx_buf_num=3})
@@ -80,7 +80,7 @@ static int xSemaphoreTake(SemaphoreHandle_t s,unsigned wait){(void)wait;if(s->he
 static void xSemaphoreGive(SemaphoreHandle_t s){assert(s->held);s->held=0;}
 static bool portal_dns_start(void){return true;}
 static void portal_dns_stop(void){dns_stops++;}
-static int httpd_start(httpd_handle_t *h,httpd_config_t *c){assert(c->max_open_sockets==4&&c->lru_purge_enable&&c->stack_size==4096);*h=(void *)1;return 0;}
+static int httpd_start(httpd_handle_t *h,httpd_config_t *c){assert(c->max_open_sockets==4&&c->lru_purge_enable&&c->stack_size==4096);assert(c->keep_alive_enable&&c->keep_alive_idle==5&&c->keep_alive_interval==5&&c->keep_alive_count==3);*h=(void *)1;return 0;}
 static int httpd_stop(httpd_handle_t h){assert(h);stops++;stop_at=now;return 0;}
 static void esp_netif_destroy_default_wifi(esp_netif_t *p){assert(p==ap);ap_destroyed++;}
 static int httpd_register_uri_handler(httpd_handle_t h,httpd_uri_t *uri){
@@ -116,10 +116,27 @@ static httpd_req_t post(const char *body){httpd_req_t req={.input=body,.content_
 static void expect_state(const char *state,const char *error){
  httpd_req_t req={0};assert(!portal_status(&req));cJSON *j=cJSON_Parse(req.response);assert(j);assert(!strcmp(cJSON_GetObjectItem(j,"state")->valuestring,state));assert(!strcmp(cJSON_GetObjectItem(j,"error")->valuestring,error));assert(cJSON_GetArraySize(j)==2);assert(!strstr(req.response,"password")&&!strstr(req.response,"ssid"));cJSON_Delete(j);
 }
+static void phone_handoff(void){
+ wifi_config_t saved=pending;unsigned outcome=portal_outcome,actions=phone_actions;
+ bool connected=got_ip,connecting=wifi_connecting,failed=connect_failed,ready=credentials_ready;
+ unsigned disconnects=disconnect_calls;
+ wifi_event_ap_staconnected_t first={.aid=1},second={.aid=2};
+ wifi_event_ap_stadisconnected_t left={.aid=1,.reason=8};
+ wifi_event(NULL,WIFI_EVENT,WIFI_EVENT_AP_STACONNECTED,&first);
+ wifi_event(NULL,WIFI_EVENT,WIFI_EVENT_AP_STACONNECTED,&second);
+ wifi_event(NULL,WIFI_EVENT,WIFI_EVENT_AP_STADISCONNECTED,&left);
+ wifi_event(NULL,WIFI_EVENT,WIFI_EVENT_AP_STADISCONNECTED,NULL);
+ assert(ap&&http&&!stops&&!dns_stops&&disconnects==disconnect_calls);
+ assert(connected==got_ip&&connecting==wifi_connecting&&failed==connect_failed&&ready==credentials_ready);
+ assert(outcome==portal_outcome&&!memcmp(&saved,&pending,sizeof pending));
+ /* The remaining phone can open the page, without automatic probes cancelling sleep. */
+ httpd_req_t page={0},probe={0};assert(!portal_get(&page)&&page.code==200);
+ assert(!portal_redirect(&probe,404)&&probe.code==303&&actions==phone_actions);
+}
 static void portal_dns_poll(void){
  if(manual_case==8 && now<3600000){
   assert(ap&&http&&!stop&&!disk_size&&!attempts&&!submitted);
-  if(now==300000||now==600000){unsigned before=phone_actions;expect_state("idle","none");assert(before==phone_actions);}
+  if(now==300000||now==600000){unsigned before=phone_actions;expect_state("idle","none");phone_handoff();assert(before==phone_actions);}
   return;
  }
  if(manual_case==9){
@@ -128,14 +145,17 @@ static void portal_dns_poll(void){
   return;
  }
  if(!submitted){
+  phone_handoff();
   httpd_req_t trailing=post("{\"ssid_hex\":\"42\",\"password\":\"12345678\"}junk");assert(trailing.code==400);
   httpd_req_t nul=post("{\"ssid_hex\":\"42\",\"password\":\"12345678\\u0000extra\"}");assert(nul.code==400);
   httpd_req_t invalid=post("{\"ssid_hex\":\"42\",\"password\":\"short\"}");assert(invalid.code==400);expect_state("idle","none");
   httpd_req_t first=post("{\"ssid_hex\":\"42\",\"password\":\"12345678\"}");assert(first.code==202);expect_state("connecting","none");
   wifi_config_t snapshot=pending;httpd_req_t repeat=post("{\"ssid_hex\":\"41\",\"password\":\"abcdefgh\"}");assert(repeat.code==409&&!memcmp(&snapshot,&pending,sizeof pending));
+  phone_handoff(); // A phone leaving after submission must not cancel the submitted router connection.
   httpd_req_t scan={0};assert(!portal_networks(&scan)&&scan.code==503&&!scans);submitted=1;
  }
  unsigned state=atomic_load(&portal_outcome)>>8;
+ if(state==PORTAL_CONNECTING&&atomic_load(&wifi_connecting))phone_handoff();
  if(state==PORTAL_FAILED){
   failures_seen++;
   if(manual_case==1){expect_state("failed","auth");assert(now>=20000&&now<=20100);}
@@ -165,9 +185,11 @@ int main(void){
  httpd_req_t scan={0};assert(!portal_networks(&scan)&&scan.code==202&&strstr(scan.response,"scanning")&&!scans&&!now);
  portal_scan_poll();assert(scans==1&&!now&&async_scan_at);
  /* HTTP navigation/probes and status remain responsive while the radio scans. */
+ unsigned probe_actions=phone_actions;
  httpd_req_t probe={0};assert(!portal_get(&probe)&&probe.code==200&&probe.gzip&&probe.html&&probe.no_cache);
  httpd_req_t redirect={0};assert(!portal_redirect(&redirect,404)&&redirect.code==303&&redirect.redirect&&strlen(redirect.response));
- expect_state("idle","none");scan=(httpd_req_t){0};assert(!portal_networks(&scan)&&scan.code==202&&scans==1&&!now);
+ expect_state("idle","none");assert(phone_actions==probe_actions);
+ scan=(httpd_req_t){0};assert(!portal_networks(&scan)&&scan.code==202&&scans==1&&!now&&phone_actions==probe_actions+1);
  vTaskDelay(1000);portal_scan_poll();assert(portal_scan->state==SCAN_READY&&!credential_guard->held);
  scan=(httpd_req_t){0};assert(!portal_networks(&scan));cJSON *list=cJSON_Parse(scan.response);assert(list&&cJSON_GetArraySize(cJSON_GetObjectItem(list,"networks"))==5);cJSON_Delete(list);
  unsigned cached_scans=scans;scan=(httpd_req_t){0};assert(!portal_networks(&scan)&&scans==cached_scans); // A second phone reuses the ready list.
@@ -216,7 +238,7 @@ int main(void){
   if(manual_case==8)assert(now>=3604000&&submitted==1&&attempts==1);
   assert(failures_seen==(unsigned)(manual_case==1||manual_case==2||manual_case==3||manual_case==5||manual_case==6||manual_case==7));
  }
- puts("portal HTTP/worker: nonblocking scan/probes/status, cache/retry/cancel/timeout, 60-minute setup, explicit cancellation, auth/timeout/save retry, 4s AP grace PASS");
+ puts("portal HTTP/worker: phone handoff preserves AP/credentials/router state, background probes do not refresh sleep, nonblocking scan, cache/retry/cancel/timeout, 4s AP grace PASS");
 }
 '''
 class WifiHttpTest(unittest.TestCase):

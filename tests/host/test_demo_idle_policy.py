@@ -101,7 +101,7 @@ int main(int argc, char **argv) {
     if(scenario==6) { s_factory_command_active=true; now_ms=3600000; idle_check_cb(0); assert(!sleeps&&!shutdowns); }
     if(scenario==7) { profile_ctl_init(&s_profile); now_ms=299999; idle_check_cb(0); assert(!sleeps&&!shutdowns); now_ms=300000; idle_check_cb(0); assert(sleeps==1); }
     if(scenario==8 || scenario==9) {
-        const xz_phase_t busy_phases[]={XZ_BIND,XZ_WIFI,XZ_CLOUD,XZ_LISTEN,XZ_THINK,XZ_SPEAK,XZ_WAKING,XZ_FAREWELL,XZ_SETUP};
+        const xz_phase_t busy_phases[]={XZ_BIND,XZ_WIFI,XZ_CLOUD,XZ_LISTEN,XZ_THINK,XZ_SPEAK,XZ_WAKING,XZ_FAREWELL};
         voice_view.phase=busy_phases[atoi(argv[2])];
         now_ms=1800000; idle_check_cb(0); assert(!sleeps&&!shutdowns);
         now_ms=1800250; idle_check_cb(0); assert(!sleeps&&!shutdowns);
@@ -115,23 +115,20 @@ int main(int argc, char **argv) {
         profile_ctl_init(&s_profile);voice_view.phase=XZ_SETUP;
         now_ms=150000;idle_check_cb(0);assert(!sleeps);
         now_ms=299999;idle_check_cb(0);assert(!sleeps);
-        now_ms=300000;idle_check_cb(0);assert(!sleeps&&!dims);
-        now_ms=3600000;idle_check_cb(0);assert(!sleeps&&!dims);
+        now_ms=300000;idle_check_cb(0);assert(sleeps==1&&shutdowns==4);
     }
     if(scenario==12) {
         voice_view.phase=XZ_SETUP;now_ms=59999;assert(note_portal_activity());
         now_ms=60000;idle_check_cb(0);assert(!sleeps);
         now_ms=119998;idle_check_cb(0);assert(!sleeps);
-        now_ms=119999;idle_check_cb(0);assert(!sleeps&&note_portal_activity());
-        voice_view.phase=XZ_STANDBY;
-        now_ms=179999;idle_check_cb(0);assert(sleeps==1&&!note_portal_activity());
+        now_ms=119999;idle_check_cb(0);assert(sleeps==1&&!note_portal_activity());
     }
     if(scenario==13) {
         restore_saved_timeout(0);voice_view.phase=XZ_SETUP;now_ms=86400000;
         idle_check_cb(0);assert(!sleeps&&!dims&&note_portal_activity());
     }
     if(scenario==14) {
-        voice_view.phase=XZ_STANDBY;now_ms=60000;phone_request_before_lock=true;
+        voice_view.phase=XZ_SETUP;now_ms=60000;phone_request_before_lock=true;
         idle_check_cb(0);assert(!sleeps&&!s_sleep_preparing);
         now_ms=119999;idle_check_cb(0);assert(!sleeps);
         now_ms=120000;idle_check_cb(0);assert(sleeps==1);
@@ -177,14 +174,14 @@ class DemoIdlePolicy(unittest.TestCase):
 
     def test_busy_phases_protect_sleep_then_ready_and_error_get_fresh_window(self):
         for transition,scenario in [('ready',8),('error',9)]:
-            for phase in range(9):
+            for phase in range(8):
                 with self.subTest(transition=transition,phase=phase):
                     self.run_scenario(scenario,phase)
 
     def test_inactive_voice_page_does_not_hold_device_awake(self):
         self.run_scenario(10)
 
-    def test_unfinished_setup_stays_awake_then_standby_uses_saved_timeout(self):
+    def test_setup_uses_saved_timeout_scan_activity_and_sleep_race_guard(self):
         for scenario in (11,12,13,14):
             with self.subTest(scenario=scenario): self.run_scenario(scenario)
 

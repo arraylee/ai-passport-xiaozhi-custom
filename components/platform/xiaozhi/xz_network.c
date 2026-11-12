@@ -107,6 +107,18 @@ static bool wifi_current_link(void) {
 }
 static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
   (void)arg;
+  // Phone joins/leaves do not stop the AP or modify the router connection.
+  // Log only association IDs/reasons, never phone identifiers or credentials.
+  if (base == WIFI_EVENT && id == WIFI_EVENT_AP_STACONNECTED) {
+    const wifi_event_ap_staconnected_t *event = data;
+    if (event) ESP_LOGI("xiaozhi", "setup phone joined aid=%u", event->aid);
+    return;
+  }
+  if (base == WIFI_EVENT && id == WIFI_EVENT_AP_STADISCONNECTED) {
+    const wifi_event_ap_stadisconnected_t *event = data;
+    if (event) ESP_LOGI("xiaozhi", "setup phone left aid=%u reason=%u", event->aid, event->reason);
+    return;
+  }
   if (base == WIFI_EVENT && id == WIFI_EVENT_SCAN_DONE) {
     const wifi_event_sta_scan_done_t *event = data;
     atomic_store(&portal_scan_done, event && !event->status ? 1 : -1);
@@ -174,7 +186,8 @@ void xz_identity(char mac[18], char uuid[37]) {
 }
 extern const char portal[] asm("_binary_portal_html_gz_start"), portal_end[] asm("_binary_portal_html_gz_end");
 static esp_err_t portal_get(httpd_req_t *r) {
-  (void)xz_portal_accept_input();
+  // Captive probes may repeat in the background. Only scan/submit actions
+  // refresh device activity; merely keeping a phone associated must not.
   httpd_resp_set_hdr(r, "Cache-Control", "no-store");
   httpd_resp_set_type(r, "text/html; charset=utf-8");
   httpd_resp_set_hdr(r, "Content-Encoding", "gzip");
@@ -182,7 +195,6 @@ static esp_err_t portal_get(httpd_req_t *r) {
 }
 static esp_err_t portal_redirect(httpd_req_t *r, httpd_err_code_t error) {
   (void)error;
-  (void)xz_portal_accept_input();
   // Android/iOS probes use several paths; iOS also needs a nonempty body.
   httpd_resp_set_status(r, "303 See Other");
   httpd_resp_set_hdr(r, "Location", "http://192.168.4.1/");
@@ -699,6 +711,12 @@ bool xz_wifi_open(bool setup, atomic_bool *cancel, xz_status_fn status,
     hc.max_open_sockets = 4;
     hc.lru_purge_enable = true;
     hc.recv_wait_timeout = 3;
+    // Reclaim dead TCP sessions after a phone leaves without closing Safari.
+    // These transport probes do not count as user activity or extend sleep.
+    hc.keep_alive_enable = true;
+    hc.keep_alive_idle = 5;
+    hc.keep_alive_interval = 5;
+    hc.keep_alive_count = 3;
     if (httpd_start(&http, &hc) != ESP_OK)
       return false;
     httpd_uri_t get = {.uri = "/", .method = HTTP_GET, .handler = portal_get},
@@ -721,8 +739,8 @@ bool xz_wifi_open(bool setup, atomic_bool *cancel, xz_status_fn status,
   }
   int64_t attempt_deadline = 0, success_until = 0;
   bool trying = false;
-  // The setup UI blocks automatic sleep. A phone may leave and rejoin without
-  // ending provisioning; explicit exit still cancels this worker.
+  // A phone may leave and rejoin while the card is awake. The device's saved
+  // idle policy still cancels this worker for sleep; there is no AP-only timer.
   while (!atomic_load(cancel)) {
     portal_dns_poll();
     portal_scan_poll();
